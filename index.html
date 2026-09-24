@@ -699,7 +699,6 @@
     <div class="youtube-embed">
       <iframe
         id="youtube-embed"
-        src="https://www.youtube.com/embed/3x2BXn0cPM8?playsinline=1&amp;rel=0&amp;modestbranding=1"
         title="CHVRCHES - Roses (Official Lyric Video)"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         referrerpolicy="strict-origin-when-cross-origin"
@@ -909,48 +908,69 @@
   let lineRevealClicks = 0;
   let userTypingMiddle = "";
 
-  /** Match chord-viewer: stable origin for enablejsapi (127.0.0.1 → localhost). */
+  /** GitHub Pages deploy identity (YouTube enablejsapi origin + widget_referrer). */
+  const GITHUB_PAGES_ORIGIN = "https://jriemsch.github.io";
+  const GITHUB_PAGES_WIDGET_REFERRER = "https://jriemsch.github.io/CHVRCHES-Roses/";
+
+  /** Match chord-viewer locally; on GitHub Pages always use jriemsch.github.io. */
   function embedOrigin() {
-    const host = location.hostname === "127.0.0.1" ? "localhost" : location.hostname;
-    return `${location.protocol}//${host}${location.port ? `:${location.port}` : ""}`;
+    const local =
+      location.hostname === "localhost" ||
+      location.hostname === "127.0.0.1" ||
+      location.protocol === "file:";
+    if (local) {
+      const host = location.hostname === "127.0.0.1" ? "localhost" : location.hostname;
+      return `${location.protocol}//${host}${location.port ? `:${location.port}` : ""}`;
+    }
+    return GITHUB_PAGES_ORIGIN;
+  }
+
+  function embedWidgetReferrer() {
+    const local =
+      location.hostname === "localhost" ||
+      location.hostname === "127.0.0.1" ||
+      location.protocol === "file:";
+    if (local) {
+      try {
+        return location.href;
+      } catch {
+        return GITHUB_PAGES_WIDGET_REFERRER;
+      }
+    }
+    return GITHUB_PAGES_WIDGET_REFERRER;
   }
 
   function youtubeEmbedHost() {
-    return "www.youtube.com";
+    return "www.youtube-nocookie.com";
   }
 
   function youtubePostMessageTarget() {
-    return `https://${youtubeEmbedHost()}`;
+    return "*";
   }
 
   function sendYoutubeListeningHandshake() {
     const win = youtubeIframe?.contentWindow;
     if (!win) return;
-    const id = youtubeIframe.id || "youtube-embed";
-    win.postMessage(
-      JSON.stringify({ event: "listening", id, channel: "widget" }),
-      youtubePostMessageTarget()
-    );
+    win.postMessage('{"event":"listening"}', youtubePostMessageTarget());
   }
 
-  /** Chord-viewer shape: enablejsapi + origin only — no start/end in the URL (seek via API). */
-  function youtubeEmbedSrc({ api = true } = {}) {
+  /** Match chord-viewer: enablejsapi + origin — seek via API, not URL start/end. */
+  function youtubeEmbedSrc() {
     const params = new URLSearchParams({
+      origin: embedOrigin(),
+      enablejsapi: "1",
       rel: "0",
       modestbranding: "1",
       playsinline: "1",
       loop: "0",
     });
-    if (api) {
-      params.set("origin", embedOrigin());
-      params.set("enablejsapi", "1");
+    try {
+      params.set("widget_referrer", embedWidgetReferrer());
+    } catch {
+      /* ignore */
     }
     const host = youtubeEmbedHost();
     return `https://${host}/embed/${encodeURIComponent(YOUTUBE_VIDEO_ID)}?${params}`;
-  }
-
-  function youtubeApiEmbedSrc() {
-    return youtubeEmbedSrc({ api: true });
   }
 
   function youtubeCommand(func, args = []) {
@@ -960,6 +980,19 @@
       youtubePostMessageTarget()
     );
   }
+
+  function onYoutubeIframeLoad() {
+    youtubeReady = true;
+    youtubeCommand("addEventListener", ["onStateChange"]);
+    sendYoutubeListeningHandshake();
+    if (youtubePendingAfterReady) {
+      const fn = youtubePendingAfterReady;
+      youtubePendingAfterReady = null;
+      fn();
+    }
+  }
+
+  let youtubePendingAfterReady = null;
 
   function setVideoPlaybackActive(active) {
     videoPlaybackActive = !!active;
@@ -1024,29 +1057,13 @@
     );
   }
 
-  function ensureYoutubeApiEmbed(onReady) {
-    const src = youtubeApiEmbedSrc();
-    const host = youtubeEmbedHost();
-    const runReady = () => {
-      youtubeReady = true;
-      youtubeCommand("addEventListener", ["onStateChange"]);
-      sendYoutubeListeningHandshake();
-      onReady?.();
-    };
-    const current = youtubeIframe.src || "";
-    const needsApi =
-      !current.includes("enablejsapi=1") || !current.includes(host);
-    if (needsApi) {
-      youtubeReady = false;
-      youtubeIframe.addEventListener("load", runReady, { once: true });
-      youtubeIframe.src = src;
+  function ensureYoutubeReady(onReady) {
+    if (!onReady) return;
+    if (youtubeReady) {
+      onReady();
       return;
     }
-    if (!youtubeReady) {
-      youtubeIframe.addEventListener("load", runReady, { once: true });
-      return;
-    }
-    onReady?.();
+    youtubePendingAfterReady = onReady;
   }
 
   function scheduleSectionStop(clip) {
@@ -1061,11 +1078,12 @@
     sectionPlaySession = true;
     const run = () => {
       seekYoutube(clip.start);
-      playYoutube();
-      setVideoPlaybackActive(true);
-      scheduleSectionStop(clip);
+      window.setTimeout(() => {
+        playYoutube();
+        scheduleSectionStop(clip);
+      }, 300);
     };
-    ensureYoutubeApiEmbed(run);
+    ensureYoutubeReady(run);
   }
 
   function bindYoutubeMessages() {
@@ -1081,6 +1099,11 @@
       }
       if (data.event === "onReady" || data.event === "infoDelivery") {
         youtubeReady = true;
+        if (youtubePendingAfterReady) {
+          const fn = youtubePendingAfterReady;
+          youtubePendingAfterReady = null;
+          fn();
+        }
       }
       if (data.event === "onStateChange" && sectionPlaySession) {
         const code = typeof data.info === "number" ? data.info : Number(data.info);
@@ -1096,7 +1119,13 @@
   function initYoutubeEmbed() {
     bindYoutubeMessages();
     lastVideoSectionLineStart = sectionStartIndex(state.index);
-    /* Plain iframe from markup until roses upgrades to enablejsapi (no start/end in URL). */
+    if (!youtubeIframe) return;
+    youtubeIframe.addEventListener("load", onYoutubeIframeLoad);
+    const targetSrc = youtubeEmbedSrc();
+    const current = youtubeIframe.src || "";
+    if (!current.includes("enablejsapi=1") || !current.includes(youtubeEmbedHost())) {
+      youtubeIframe.src = targetSrc;
+    }
   }
 
   function syncVideoToProgress() {
