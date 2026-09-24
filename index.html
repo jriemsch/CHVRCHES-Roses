@@ -699,7 +699,7 @@
     <div class="youtube-embed">
       <iframe
         id="youtube-embed"
-        src="https://www.youtube-nocookie.com/embed/3x2BXn0cPM8?playsinline=1&amp;rel=0&amp;modestbranding=1"
+        src="https://www.youtube.com/embed/3x2BXn0cPM8?playsinline=1&amp;rel=0&amp;modestbranding=1"
         title="CHVRCHES - Roses (Official Lyric Video)"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         referrerpolicy="strict-origin-when-cross-origin"
@@ -906,27 +906,56 @@
     return window.location.origin;
   }
 
-  /** Same URL shape as chord-viewer `youtubeEmbedSrc` (nocookie + enablejsapi + song end). */
-  function youtubeApiEmbedSrc() {
+  /** iOS Safari blocks postMessage play/seek from outer buttons; use URL navigation on tap instead. */
+  function prefersYoutubeUrlSectionPlay() {
+    const ua = navigator.userAgent;
+    const isIOS =
+      /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    if (isIOS) return true;
+    return /Safari/.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/.test(ua);
+  }
+
+  function youtubeEmbedHost() {
+    return prefersYoutubeUrlSectionPlay() ? "www.youtube.com" : "www.youtube-nocookie.com";
+  }
+
+  function youtubePostMessageTarget() {
+    return `https://${youtubeEmbedHost()}`;
+  }
+
+  /** Same URL shape as chord-viewer `youtubeEmbedSrc` (enablejsapi + optional section clip). */
+  function youtubeEmbedSrc({ clip = null, autoplay = false, api = true } = {}) {
     const params = new URLSearchParams({
-      origin: embedOrigin(),
-      enablejsapi: "1",
       rel: "0",
       modestbranding: "1",
       playsinline: "1",
       loop: "0",
     });
-    if (YOUTUBE_DURATION_SEC > 0) {
+    if (api) {
+      params.set("origin", embedOrigin());
+      params.set("enablejsapi", "1");
+    }
+    if (clip) {
+      params.set("start", String(Math.max(0, Math.floor(clip.start))));
+      params.set("end", String(Math.max(1, Math.ceil(clip.end))));
+    } else if (YOUTUBE_DURATION_SEC > 0 && api) {
       params.set("end", String(Math.round(YOUTUBE_DURATION_SEC)));
     }
-    return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(YOUTUBE_VIDEO_ID)}?${params}`;
+    if (autoplay) params.set("autoplay", "1");
+    const host = youtubeEmbedHost();
+    return `https://${host}/embed/${encodeURIComponent(YOUTUBE_VIDEO_ID)}?${params}`;
+  }
+
+  function youtubeApiEmbedSrc() {
+    return youtubeEmbedSrc({ api: true });
   }
 
   function youtubeCommand(func, args = "") {
     if (!youtubeIframe?.contentWindow) return;
     youtubeIframe.contentWindow.postMessage(
       JSON.stringify({ event: "command", func, args }),
-      "*"
+      youtubePostMessageTarget()
     );
   }
 
@@ -994,15 +1023,19 @@
 
   function ensureYoutubeApiEmbed(onReady) {
     const src = youtubeApiEmbedSrc();
+    const host = youtubeEmbedHost();
     const runReady = () => {
       youtubeReady = true;
       youtubeCommand("addEventListener", ["onStateChange"]);
-      youtubeIframe.contentWindow?.postMessage('{"event":"listening"}', "*");
+      youtubeIframe.contentWindow?.postMessage(
+        '{"event":"listening"}',
+        youtubePostMessageTarget()
+      );
       onReady?.();
     };
     const current = youtubeIframe.src || "";
     const needsApi =
-      !current.includes("enablejsapi=1") || !current.includes("youtube-nocookie.com");
+      !current.includes("enablejsapi=1") || !current.includes(host);
     if (needsApi) {
       youtubeReady = false;
       youtubeIframe.addEventListener("load", runReady, { once: true });
@@ -1025,6 +1058,23 @@
   function playCurrentSection() {
     const clip = sectionVideoForLineIndex(state.index);
     clearSectionStopTimer();
+    if (prefersYoutubeUrlSectionPlay()) {
+      youtubeReady = false;
+      const src = youtubeEmbedSrc({ clip, autoplay: true, api: true });
+      const runReady = () => {
+        youtubeReady = true;
+        youtubeCommand("addEventListener", ["onStateChange"]);
+        youtubeIframe.contentWindow?.postMessage(
+          '{"event":"listening"}',
+          youtubePostMessageTarget()
+        );
+      };
+      youtubeIframe.addEventListener("load", runReady, { once: true });
+      youtubeIframe.src = src;
+      setVideoPlaybackActive(true);
+      scheduleSectionStop(clip);
+      return;
+    }
     const run = () => {
       seekYoutube(clip.start);
       playYoutube();
@@ -1059,7 +1109,9 @@
   function initYoutubeEmbed() {
     bindYoutubeMessages();
     lastVideoSectionLineStart = sectionStartIndex(state.index);
-    ensureYoutubeApiEmbed();
+    if (!prefersYoutubeUrlSectionPlay()) {
+      ensureYoutubeApiEmbed();
+    }
   }
 
   function syncVideoToProgress() {
