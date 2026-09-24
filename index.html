@@ -1,0 +1,2091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roses — learn</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #121212;
+    --text: rgba(255, 255, 255, 0.9);
+    --muted: rgba(255, 255, 255, 0.45);
+    --accent: #c80018;
+    --roses-icon-url: url("assets/chvrches-roses-icon.svg");
+    --ok: #3dd68c;
+    --bad: #ff5c5c;
+    font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .shell {
+    width: min(100%, 520px);
+    height: 100%;
+    max-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    padding: 0.75rem 1rem 0;
+    gap: 0;
+  }
+  .app-top {
+    flex-shrink: 0;
+    padding-bottom: 0.55rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--bg);
+    z-index: 2;
+  }
+  .shell.is-choosing-mode .app-top {
+    display: none;
+  }
+  .hud {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .hud strong {
+    color: var(--text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .hud-countdown {
+    font-variant-numeric: tabular-nums;
+    min-width: 2.5rem;
+  }
+  .hud-countdown.is-hidden {
+    visibility: hidden;
+  }
+  .hud-countdown strong {
+    color: var(--accent);
+    font-size: 1rem;
+  }
+  .hud-spacer {
+    flex: 1;
+    min-width: 0.5rem;
+  }
+  .cross-icon-wrap {
+    width: 2.35rem;
+    height: 2.35rem;
+    min-width: 2.35rem;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    flex-shrink: 0;
+  }
+  .cross-glyph {
+    width: 58%;
+    height: 58%;
+    display: block;
+    pointer-events: none;
+    image-rendering: pixelated;
+  }
+  .cross-labeled-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    width: 100%;
+    padding: 0.35rem 0;
+    margin: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+  }
+  .cross-labeled-btn:hover:not(:disabled) .cross-icon-wrap {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .cross-labeled-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .cross-labeled-text {
+    text-transform: uppercase;
+    font-size: 0.9rem;
+    letter-spacing: 0.06em;
+    color: var(--text);
+    line-height: 1.2;
+  }
+  .reset-labeled-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.15rem 0.25rem 0.15rem 0;
+    margin: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    flex-shrink: 0;
+  }
+  .reset-labeled-btn:hover:not(:disabled) .cross-icon-wrap {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .reset-labeled-btn .cross-labeled-text {
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .confirm-dialog {
+    margin: auto;
+    padding: 0;
+    border: none;
+    background: transparent;
+    max-width: min(92vw, 22rem);
+  }
+  .confirm-dialog:focus {
+    outline: none;
+  }
+  .confirm-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.72);
+  }
+  .confirm-dialog-panel {
+    padding: 1.25rem 1.35rem 1.15rem;
+    border-radius: 14px;
+    background: var(--panel);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  }
+  .confirm-dialog-panel h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .confirm-dialog-panel p {
+    margin: 0 0 1.15rem;
+    font-size: 0.88rem;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  .confirm-dialog-panel.mode-picker h2 {
+    text-align: center;
+  }
+  .app-main {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    -webkit-overflow-scrolling: touch;
+  }
+  .app-video {
+    flex-shrink: 0;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0));
+    background: var(--bg);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    z-index: 2;
+  }
+  .lyrics-compose {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-bottom: 0.35rem;
+  }
+  .history-line,
+  .all-lines .lyric-row,
+  #reveal-text {
+    text-transform: uppercase;
+  }
+  .history-line {
+    font-size: 0.9rem;
+    line-height: 1.45;
+    padding: 0.12rem 0;
+    color: var(--text);
+  }
+  .history-line.is-answer {
+    color: var(--text);
+  }
+  /* Match roses-lyric-field `.grid-cell.is-red` flicker */
+  .history-line.is-answer.is-flicker-red {
+    color: rgba(255, 0, 0, 0.9);
+    text-shadow: 0 0 14px rgba(255, 0, 0, 0.4);
+  }
+  .history-line.is-answer.is-flicker-red.is-flicker-off {
+    color: rgba(255, 0, 0, 0);
+    text-shadow: none;
+  }
+  .history-line.is-answer.is-flicker-red.is-flicker-on {
+    color: rgba(255, 0, 0, 0.95);
+    text-shadow: 0 0 18px rgba(255, 0, 0, 0.55);
+  }
+  .history-line.is-attempt {
+    color: rgba(255, 0, 0, 0.9);
+    text-decoration: line-through;
+    text-decoration-color: rgba(255, 0, 0, 0.75);
+  }
+  .card {
+    background: var(--panel);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 1.1rem 1.15rem 1.25rem;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  }
+  .history {
+    margin: 0;
+    padding: 0;
+  }
+  form { display: flex; flex-direction: column; gap: 0.65rem; }
+  .guess-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin-top: 0;
+  }
+  .lyrics-compose form {
+    gap: 0.5rem;
+  }
+  .guess-slot {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.35rem;
+  }
+  .guess-slot.is-choices-mode .guess-typing-compose {
+    display: none;
+  }
+  .guess-typing-compose {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.2rem 0.35rem;
+    width: 100%;
+    min-width: 0;
+  }
+  .typing-reveal-edge {
+    text-transform: uppercase;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--accent);
+    flex-shrink: 1;
+    min-width: 0;
+    word-break: break-word;
+  }
+  .guess-typing-compose input {
+    flex: 1 1 2.5rem;
+    width: auto;
+    min-width: 2rem;
+  }
+  .guess-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 0.45rem;
+  }
+  .guess-row input {
+    text-transform: uppercase;
+    width: 100%;
+    min-width: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    padding: 0.12rem 0;
+    caret-color: var(--accent);
+  }
+  .guess-row input::placeholder {
+    color: rgba(255, 255, 255, 0.28);
+  }
+  .guess-row input:focus {
+    outline: none;
+    box-shadow: none;
+  }
+  .guess-row .guess-cross-btn {
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    min-width: 2.75rem;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+  }
+  .guess-row .guess-cross-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .guess-row .guess-cross-btn .rose-glyph {
+    width: 62%;
+    height: 62%;
+    display: block;
+    pointer-events: none;
+    background-color: rgba(255, 255, 255, 0.82);
+    -webkit-mask: var(--roses-icon-url) center / contain no-repeat;
+    mask: var(--roses-icon-url) center / contain no-repeat;
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.15));
+  }
+  .guess-row .guess-cross-btn.guess-hint:hover:not(:disabled) .rose-glyph {
+    background-color: rgba(255, 255, 255, 0.95);
+  }
+  .guess-row .guess-cross-btn.guess-hint.is-armed {
+    border-color: rgba(200, 0, 24, 0.55);
+    background: rgba(200, 0, 24, 0.14);
+    box-shadow: 0 0 12px rgba(255, 0, 0, 0.25);
+  }
+  .guess-row .guess-cross-btn.guess-hint.is-armed .rose-glyph {
+    background-color: var(--accent);
+    filter: drop-shadow(0 0 10px rgba(255, 0, 0, 0.45));
+  }
+  .typing-reveal-btn {
+    display: none;
+  }
+  .shell.is-mode-typing .typing-reveal-btn {
+    display: inline-flex;
+  }
+  .guess-choices {
+    display: none;
+    flex-direction: column;
+    gap: 0.3rem;
+    width: 100%;
+  }
+  .guess-slot.is-choices-mode .guess-choices.is-visible {
+    display: flex;
+    padding-top: 0.65rem;
+  }
+  button.guess-choice {
+    width: 100%;
+    text-align: left;
+    text-transform: uppercase;
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.35;
+    padding: 0.5rem 0.65rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    white-space: normal;
+  }
+  button.guess-choice:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+  button.guess-choice:disabled {
+    opacity: 0.4;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  button {
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 999px;
+    padding: 0.55rem 1.1rem;
+    cursor: pointer;
+    transition: transform 0.12s ease, opacity 0.12s ease;
+  }
+  button:active { transform: scale(0.98); }
+  button.primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  button.secondary {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text);
+  }
+  button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .feedback {
+    margin-top: 0.85rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    min-height: 0;
+  }
+  .feedback.is-ok { color: var(--ok); }
+  .feedback.is-bad { color: var(--bad); }
+  .reveal {
+    margin-top: 0.65rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border-left: 3px solid var(--accent);
+    font-size: 0.95rem;
+    display: none;
+  }
+  .reveal.is-visible { display: block; }
+  .reveal-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 0.35rem;
+  }
+  .done {
+    text-align: center;
+    padding: 1.5rem 0.5rem;
+  }
+  .done h2 { margin: 0 0 0.5rem; font-size: 1.2rem; }
+  .done p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+  .all-lines {
+    display: none;
+    background: var(--panel);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  .all-lines.is-open { display: block; }
+  .all-lines h2 {
+    margin: 0 0 0.65rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  .all-lines .lyric-row {
+    padding: 0.15rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  }
+  .all-lines .lyric-row:last-child { border-bottom: none; }
+  .all-lines .lyric-row.is-current {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .all-lines .lyric-section {
+    margin-top: 0.65rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.7rem;
+    color: var(--accent);
+    opacity: 0.85;
+  }
+  .all-lines .lyric-section:first-child { margin-top: 0; }
+  .all-lines .lyric-n {
+    display: inline-block;
+    width: 1.75rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    font-size: 0.72rem;
+  }
+  .video-panel {
+    background: var(--panel);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .youtube-embed {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: #000;
+  }
+  .youtube-embed iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  .video-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.6rem;
+    align-items: center;
+    padding: 0.55rem 0.85rem 0.7rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .video-icon-btn {
+    display: inline-flex;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text);
+    font: inherit;
+  }
+  .video-icon-btn:hover:not(:disabled) .cross-icon-wrap {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .video-icon-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .video-roses-toggle .rose-glyph {
+    width: 62%;
+    height: 62%;
+    display: block;
+    pointer-events: none;
+    background-color: rgba(255, 255, 255, 0.95);
+    -webkit-mask: var(--roses-icon-url) center / contain no-repeat;
+    mask: var(--roses-icon-url) center / contain no-repeat;
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.15));
+    transition: background-color 0.15s ease, filter 0.15s ease;
+  }
+  .video-roses-toggle.is-playing .cross-icon-wrap {
+    border-color: rgba(200, 0, 24, 0.55);
+    background: rgba(200, 0, 24, 0.14);
+    box-shadow: 0 0 12px rgba(255, 0, 0, 0.25);
+  }
+  .video-roses-toggle.is-playing .rose-glyph {
+    background-color: var(--accent);
+    filter: drop-shadow(0 0 10px rgba(255, 0, 0, 0.45));
+  }
+  .mode-picker {
+    text-align: center;
+    padding: 1.5rem 1.25rem 1.75rem;
+  }
+  .mode-picker h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .mode-picker-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.85rem;
+    margin-top: 1.1rem;
+  }
+  .mode-picker-actions .cross-labeled-btn {
+    width: auto;
+    justify-content: center;
+  }
+  .mode-picker-actions .cross-labeled-btn.icon-after {
+    flex-direction: row-reverse;
+  }
+  .shell.is-mode-typing .guess-hint {
+    display: none;
+  }
+  .shell.is-mode-choices .guess-hint {
+    display: none;
+  }
+  .shell.is-mode-choices .guess-slot > input[type="text"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .shell.is-video-playing .guess-slot,
+  .shell.is-video-playing .guess-actions {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .shell.is-video-playing .guess-slot input[type="text"] {
+    pointer-events: none;
+  }
+  .shell.is-video-playing .guess-choices.is-visible {
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="app-top">
+    <div class="hud" id="hud" aria-live="polite">
+      <span>SCORE <strong id="score-value">0</strong></span>
+      <span class="hud-countdown" id="countdown-wrap"><strong id="countdown-value">15</strong>s</span>
+      <span>BEST <strong id="high-score-value">0</strong></span>
+      <span class="hud-spacer" aria-hidden="true"></span>
+      <button type="button" class="reset-labeled-btn" id="reset-progress" aria-label="Restart — reset progress" title="Restart — reset progress">
+        <span class="cross-icon-wrap" aria-hidden="true">
+          <img class="cross-glyph" src="chvrches-crosses/cross-4-normalized.png" width="28" height="28" alt="" />
+        </span>
+        <span class="cross-labeled-text">Restart</span>
+      </button>
+    </div>
+  </div>
+  <div class="app-main">
+  <div class="card mode-picker" id="mode-card" hidden>
+    <h2>CHOOSE HOW TO PLAY</h2>
+    <div class="mode-picker-actions">
+      <button type="button" class="cross-labeled-btn" id="mode-typing-btn" aria-label="Type the lyrics">
+        <span class="cross-icon-wrap" aria-hidden="true">
+          <img class="cross-glyph" src="chvrches-crosses/cross-2-normalized.png" width="28" height="28" alt="" />
+        </span>
+        <span class="cross-labeled-text">Type the lyrics</span>
+      </button>
+      <button type="button" class="cross-labeled-btn icon-after" id="mode-choices-btn" aria-label="Pick the lyrics">
+        <span class="cross-icon-wrap" aria-hidden="true">
+          <img class="cross-glyph" src="chvrches-crosses/cross-3-normalized.png" width="28" height="28" alt="" />
+        </span>
+        <span class="cross-labeled-text">Pick the lyrics</span>
+      </button>
+    </div>
+  </div>
+  <div class="card" id="play-card">
+    <div class="lyrics-compose" aria-label="Lyrics in progress">
+      <div class="history" id="history"></div>
+    <form id="guess-form" autocomplete="off">
+      <div class="guess-row" id="guess-row">
+        <div class="guess-slot" id="guess-slot">
+          <div class="guess-typing-compose" id="guess-typing-compose">
+            <span class="typing-reveal-edge typing-reveal-prefix" id="typing-reveal-prefix" hidden></span>
+            <input type="text" id="guess-input" placeholder="TYPE THE NEXT LYRIC LINE…" aria-label="Your guess for the next line" enterkeyhint="go" autocomplete="off" spellcheck="false" autocapitalize="characters" />
+            <span class="typing-reveal-edge typing-reveal-suffix" id="typing-reveal-suffix" hidden></span>
+          </div>
+          <div class="guess-choices" id="guess-choices" role="group" aria-label="Pick a lyric line"></div>
+        </div>
+        <div class="guess-actions">
+          <button type="button" class="guess-cross-btn typing-reveal-btn" id="typing-reveal-btn" aria-label="Reveal a word" title="Reveal a word">
+            <span class="rose-glyph" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="guess-cross-btn guess-hint" id="skip-btn" aria-expanded="false" aria-label="Think — show choices or reveal" title="Think — choices (tap again to reveal)">
+            <span class="rose-glyph" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" class="secondary" id="next-after-wrong" hidden>Next line</button>
+      </div>
+    </form>
+    </div>
+    <div class="feedback" id="feedback" role="status"></div>
+    <div class="reveal" id="reveal">
+      <div class="reveal-label">Correct line</div>
+      <div id="reveal-text"></div>
+    </div>
+  </div>
+  <div class="card done" id="done-card" hidden>
+    <h2>You finished the run</h2>
+    <p id="done-summary"></p>
+    <div class="actions" style="justify-content: center; margin-top: 1rem;">
+      <button type="button" class="primary" id="restart-btn">Start over</button>
+    </div>
+  </div>
+  <div class="all-lines" id="all-lines" hidden aria-labelledby="all-lines-title">
+    <h2 id="all-lines-title">Full lyrics</h2>
+    <div id="all-lines-body"></div>
+  </div>
+  </div>
+  <div class="app-video">
+  <section class="video-panel" aria-label="Lyric video for the current section">
+    <div class="youtube-embed">
+      <iframe
+        id="youtube-embed"
+        src="https://www.youtube.com/embed/3x2BXn0cPM8"
+        title="CHVRCHES - Roses (Official Lyric Video)"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allowfullscreen
+      ></iframe>
+    </div>
+    <div class="video-actions">
+      <button
+        type="button"
+        class="video-icon-btn video-roses-toggle"
+        id="video-roses-toggle"
+        aria-label="Play section"
+        aria-pressed="false"
+      >
+        <span class="cross-icon-wrap" aria-hidden="true">
+          <span class="rose-glyph"></span>
+        </span>
+      </button>
+    </div>
+  </section>
+  </div>
+</div>
+<dialog class="confirm-dialog" id="restart-confirm-dialog" aria-labelledby="restart-confirm-title">
+  <div class="confirm-dialog-panel mode-picker">
+    <h2 id="restart-confirm-title">Restart this run?</h2>
+    <div class="mode-picker-actions">
+      <button type="button" class="cross-labeled-btn" id="restart-confirm-cancel" aria-label="Cancel">
+        <span class="cross-icon-wrap" aria-hidden="true">
+          <img class="cross-glyph" src="chvrches-crosses/cross-2-normalized.png" width="28" height="28" alt="" />
+        </span>
+        <span class="cross-labeled-text">Cancel</span>
+      </button>
+      <button type="button" class="cross-labeled-btn icon-after" id="restart-confirm-ok" aria-label="Restart">
+        <span class="cross-icon-wrap" aria-hidden="true">
+          <img class="cross-glyph" src="chvrches-crosses/cross-4-normalized.png" width="28" height="28" alt="" />
+        </span>
+        <span class="cross-labeled-text">Restart</span>
+      </button>
+    </div>
+  </div>
+</dialog>
+<script>
+(function () {
+  /** Same sequence as roses-lyric-field.html (single pass through the song). */
+  const LINES = [
+    { section: "Verse 1", text: "On the edge of a city in a slow dive" },
+    { section: null, text: "Or so say you, so say you" },
+    { section: null, text: "Crosshairs in the center of a skyline" },
+    { section: null, text: "Waiting for the right time" },
+    { section: null, text: "Freezing up like a rabbit in the headlights" },
+    { section: null, text: "Oh, what to do? What to do?" },
+    { section: null, text: "I don't think I can see it as a good sign" },
+    { section: null, text: "If all of it repeats and rhymes" },
+    { section: "Chorus", text: "Ring-a-ring-a roses" },
+    { section: null, text: "Oh, we all fall to the ground" },
+    { section: null, text: "Every circle closes" },
+    { section: null, text: "For a penny, for a pound" },
+    { section: null, text: "All these things for God and for king" },
+    { section: null, text: "We all keep going ’round" },
+    { section: null, text: "Ring-a-ring-a roses" },
+    { section: null, text: "Oh, we all fall to the ground" },
+    { section: "Verse 2", text: "Line them up, take aim. Who you gonna blame?" },
+    { section: null, text: "Imagine that, oh, imagine that" },
+    { section: null, text: "Shit-scared of the horrors in your own brain" },
+    { section: null, text: "Swimming pools of acid rain" },
+    { section: null, text: "Fill a glass with delusions of the good days" },
+    { section: null, text: "Of blood and wine, of pearls for swine" },
+    { section: null, text: "Never sure if you're paranoid or entertained" },
+    { section: null, text: "Weighing up the pain and gain" },
+    { section: null, text: "Oh, don't you feel ashamed?" },
+    { section: "Chorus", text: "Ring-a-ring-a roses" },
+    { section: null, text: "Oh, we all fall to the ground" },
+    { section: null, text: "Every circle closes" },
+    { section: null, text: "For a penny, for a pound" },
+    { section: null, text: "All these things for God and for king" },
+    { section: null, text: "We all keep going ’round" },
+    { section: null, text: "Ring-a-ring-a roses" },
+    { section: null, text: "Oh, we all fall to the ground" },
+    { section: "Bridge", text: "A woman is a woman even if you want her dead" },
+    { section: null, text: "Siphoning the bodies as a way to get ahead" },
+    { section: null, text: "Finding hidden meaning inside everything you read" },
+    { section: null, text: "Driving yourself crazy over who is in whose bed" },
+    { section: null, text: "Stiff upper lip, shooting from the hip" },
+    { section: null, text: "Running like a rat afraid of sinking with the ship" },
+    { section: null, text: "Are you being fed?" },
+    { section: null, text: "Are you ready yet?" },
+    { section: null, text: "Doesn't fucking matter" },
+    { section: null, text: "On your marks, get set" },
+    { section: "Chorus", text: "Ring-a-ring-a roses" },
+    { section: null, text: "Oh, we all fall to the ground" },
+    { section: null, text: "Every circle closes" },
+    { section: null, text: "For a penny, for a pound" },
+    { section: null, text: "All these things for God and for king" },
+    { section: null, text: "We all keep going ’round" },
+    { section: null, text: "Ring-a-ring-a roses" },
+    { section: null, text: "Oh, we all fall to the ground" },
+    { section: "Outro", text: "Here lies the legacy, the body, the head and the heart" },
+    { section: null, text: "And if I may command your undivided attention" },
+    { section: null, text: "Now we can start" },
+    { section: null, text: "Start" },
+    { section: null, text: "Start" },
+    { section: null, text: "Start" },
+    { section: null, text: "Start" },
+    { section: null, text: "Start" },
+  ];
+
+  const STORAGE_KEY = "roses-learn-sheet-v1";
+  const HIGH_SCORE_KEY_LEGACY = "roses-learn-sheet-high-score-v1";
+  const HIGH_SCORE_KEY_TYPING = "roses-learn-sheet-high-score-typing-v1";
+  const HIGH_SCORE_KEY_CHOICES = "roses-learn-sheet-high-score-choices-v1";
+  const PLAY_MODE_TYPING = "typing";
+  const PLAY_MODE_CHOICES = "choices";
+  const COUNTDOWN_SEC_TYPING = 15;
+  const COUNTDOWN_SEC_CHOICES = 5;
+  const SCORE_TYPING_BASE = 100;
+  const SCORE_CHOICE_BASE = 10;
+  const SCORE_SEC_BONUS_TYPING = 1;
+  const SCORE_SEC_BONUS_CHOICES = 1;
+  const SCORE_TYPING_REVEAL_PENALTY = 10;
+  /** Typing mode: max Levenshtein edits on letter-only keys (slight typos). */
+  const TYPING_FUZZY_MAX_EDIT_RATIO = 0.08;
+  const TYPING_FUZZY_MAX_EDIT_ABSOLUTE = 3;
+  const YOUTUBE_VIDEO_ID = "3x2BXn0cPM8";
+  const YOUTUBE_DURATION_SEC = 208;
+  /** Section clip bounds for the official lyric video (lineStart = LINES index where section begins). */
+  const SECTION_VIDEO = [
+    { lineStart: 0, label: "Verse 1", start: 21, end: 63 },
+    { lineStart: 8, label: "Chorus", start: 63, end: 85.5 },
+    { lineStart: 16, label: "Verse 2", start: 84, end: 127.5 },
+    { lineStart: 25, label: "Chorus", start: 88, end: 116 },
+    { lineStart: 34, label: "Bridge", start: 115, end: 150.5 },
+    { lineStart: 45, label: "Chorus", start: 151, end: 179 },
+    { lineStart: 53, label: "Outro", start: 178, end: YOUTUBE_DURATION_SEC },
+  ];
+
+  const LINE_FADE_MS = 450;
+  /** Faster strobe than lyric-field grid (same red on/off look). */
+  const HISTORY_FLICKER_PERIOD_MS = 42;
+
+  const YT_MESSAGE_ORIGINS = new Set([
+    "https://www.youtube.com",
+    "https://www.youtube-nocookie.com",
+  ]);
+
+  const historyEl = document.getElementById("history");
+  const scoreValueEl = document.getElementById("score-value");
+  const highScoreValueEl = document.getElementById("high-score-value");
+  const countdownWrapEl = document.getElementById("countdown-wrap");
+  const countdownValueEl = document.getElementById("countdown-value");
+  const form = document.getElementById("guess-form");
+  const input = document.getElementById("guess-input");
+  const feedback = document.getElementById("feedback");
+  const reveal = document.getElementById("reveal");
+  const revealText = document.getElementById("reveal-text");
+  const skipBtn = document.getElementById("skip-btn");
+  const typingRevealBtn = document.getElementById("typing-reveal-btn");
+  const typingRevealPrefix = document.getElementById("typing-reveal-prefix");
+  const typingRevealSuffix = document.getElementById("typing-reveal-suffix");
+  const nextAfterWrong = document.getElementById("next-after-wrong");
+  const playCard = document.getElementById("play-card");
+  const doneCard = document.getElementById("done-card");
+  const doneSummary = document.getElementById("done-summary");
+  const restartBtn = document.getElementById("restart-btn");
+  const resetProgress = document.getElementById("reset-progress");
+  const restartConfirmDialog = document.getElementById("restart-confirm-dialog");
+  const restartConfirmCancel = document.getElementById("restart-confirm-cancel");
+  const restartConfirmOk = document.getElementById("restart-confirm-ok");
+  const allLinesPanel = document.getElementById("all-lines");
+  const allLinesBody = document.getElementById("all-lines-body");
+  const youtubeIframe = document.getElementById("youtube-embed");
+  const videoRosesToggle = document.getElementById("video-roses-toggle");
+  const guessRow = document.getElementById("guess-row");
+  const guessSlot = document.getElementById("guess-slot");
+
+  const guessChoicesEl = document.getElementById("guess-choices");
+  const modeCard = document.getElementById("mode-card");
+  const modeTypingBtn = document.getElementById("mode-typing-btn");
+  const modeChoicesBtn = document.getElementById("mode-choices-btn");
+  const shellEl = document.querySelector(".shell");
+  let hintChoicesOpen = false;
+
+  let state = loadState();
+  let highScoreRecord = loadHighScoreRecord();
+  let allLinesOpen = false;
+  let countdownRemainingSec = COUNTDOWN_SEC_TYPING;
+  let countdownTimer = null;
+  let countdownVisible = true;
+  let lineAttempts = 0;
+  let flickerAnswerEl = null;
+  let historyFlickerActive = false;
+  let historyFlickerStartT = null;
+  let portalFlickerLoopStarted = false;
+  let youtubeReady = false;
+  let sectionStopTimer = null;
+  let lastVideoSectionLineStart = null;
+  let videoPlaybackActive = false;
+  let lineRevealStartCount = 0;
+  let lineRevealEndCount = 0;
+  let lineRevealClicks = 0;
+  let userTypingMiddle = "";
+
+  /** Must match the portal tab origin exactly (chord-viewer pattern; do not remap 127.0.0.1 → localhost). */
+  function embedOrigin() {
+    return window.location.origin;
+  }
+
+  /** Same URL shape as chord-viewer `youtubeEmbedSrc` (nocookie + enablejsapi + song end). */
+  function youtubeApiEmbedSrc() {
+    const params = new URLSearchParams({
+      origin: embedOrigin(),
+      enablejsapi: "1",
+      rel: "0",
+      modestbranding: "1",
+      playsinline: "1",
+      loop: "0",
+    });
+    if (YOUTUBE_DURATION_SEC > 0) {
+      params.set("end", String(Math.round(YOUTUBE_DURATION_SEC)));
+    }
+    return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(YOUTUBE_VIDEO_ID)}?${params}`;
+  }
+
+  function youtubeCommand(func, args = "") {
+    if (!youtubeIframe?.contentWindow) return;
+    youtubeIframe.contentWindow.postMessage(
+      JSON.stringify({ event: "command", func, args }),
+      "*"
+    );
+  }
+
+  function setVideoPlaybackActive(active) {
+    videoPlaybackActive = !!active;
+    if (videoRosesToggle) {
+      videoRosesToggle.classList.toggle("is-playing", videoPlaybackActive);
+      videoRosesToggle.setAttribute("aria-pressed", videoPlaybackActive ? "true" : "false");
+      videoRosesToggle.setAttribute(
+        "aria-label",
+        videoPlaybackActive ? "Stop section" : "Play section"
+      );
+    }
+    refreshPlayControlsForVideo();
+  }
+
+  function refreshPlayControlsForVideo() {
+    if (shellEl) {
+      shellEl.classList.toggle("is-video-playing", videoPlaybackActive);
+    }
+    const playVisible = playCard && !playCard.hidden;
+    if (!videoPlaybackActive) {
+      if (!playVisible) return;
+      input.disabled = false;
+      if (typingRevealBtn) typingRevealBtn.disabled = false;
+      if (skipBtn) skipBtn.disabled = false;
+      setGuessChoicesDisabled(false);
+      return;
+    }
+    input.disabled = true;
+    input.blur();
+    if (typingRevealBtn) typingRevealBtn.disabled = true;
+    if (skipBtn) skipBtn.disabled = true;
+    setGuessChoicesDisabled(true);
+  }
+
+  function pauseYoutube() {
+    youtubeCommand("pauseVideo");
+    clearSectionStopTimer();
+    setVideoPlaybackActive(false);
+  }
+
+  function clearSectionStopTimer() {
+    if (sectionStopTimer) {
+      clearTimeout(sectionStopTimer);
+      sectionStopTimer = null;
+    }
+  }
+
+  function seekYoutube(seconds) {
+    youtubeCommand("seekTo", [Math.max(0, seconds), true]);
+  }
+
+  function playYoutube() {
+    youtubeCommand("playVideo");
+  }
+
+  function sectionVideoForLineIndex(lineIndex) {
+    const startIdx = sectionStartIndex(lineIndex);
+    return (
+      SECTION_VIDEO.find((s) => s.lineStart === startIdx) ||
+      SECTION_VIDEO[0]
+    );
+  }
+
+  function ensureYoutubeApiEmbed(onReady) {
+    const src = youtubeApiEmbedSrc();
+    const runReady = () => {
+      youtubeReady = true;
+      youtubeCommand("addEventListener", ["onStateChange"]);
+      youtubeIframe.contentWindow?.postMessage('{"event":"listening"}', "*");
+      onReady?.();
+    };
+    const current = youtubeIframe.src || "";
+    const needsApi =
+      !current.includes("enablejsapi=1") || !current.includes("youtube-nocookie.com");
+    if (needsApi) {
+      youtubeReady = false;
+      youtubeIframe.addEventListener("load", runReady, { once: true });
+      youtubeIframe.src = src;
+      return;
+    }
+    if (!youtubeReady) {
+      youtubeIframe.addEventListener("load", runReady, { once: true });
+      return;
+    }
+    onReady?.();
+  }
+
+  function scheduleSectionStop(clip) {
+    clearSectionStopTimer();
+    const ms = Math.max(500, (clip.end - clip.start) * 1000 + 350);
+    sectionStopTimer = setTimeout(() => pauseYoutube(), ms);
+  }
+
+  function playCurrentSection() {
+    const clip = sectionVideoForLineIndex(state.index);
+    clearSectionStopTimer();
+    const run = () => {
+      seekYoutube(clip.start);
+      playYoutube();
+      setVideoPlaybackActive(true);
+      scheduleSectionStop(clip);
+    };
+    ensureYoutubeApiEmbed(run);
+  }
+
+  function bindYoutubeMessages() {
+    if (window.__rosesLearnYoutubeBound) return;
+    window.__rosesLearnYoutubeBound = true;
+    window.addEventListener("message", (event) => {
+      if (!YT_MESSAGE_ORIGINS.has(event.origin)) return;
+      let data;
+      try {
+        data = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      if (data.event === "onReady" || data.event === "infoDelivery") {
+        youtubeReady = true;
+      }
+      if (data.event === "onStateChange") {
+        const code = typeof data.info === "number" ? data.info : Number(data.info);
+        if (code === 1) setVideoPlaybackActive(true);
+        else if (code === 0 || code === 2 || code === 5) setVideoPlaybackActive(false);
+      }
+    });
+  }
+
+  function initYoutubeEmbed() {
+    bindYoutubeMessages();
+    lastVideoSectionLineStart = sectionStartIndex(state.index);
+  }
+
+  function syncVideoToProgress() {
+    const secStart = sectionStartIndex(state.index);
+    if (secStart === lastVideoSectionLineStart) return;
+    lastVideoSectionLineStart = secStart;
+    pauseYoutube();
+  }
+
+  function normalizeHistoryEntry(h) {
+    if (typeof h === "string") {
+      return { text: h, correctFirstTry: false, skipped: false, attempts: 1, userGuess: null };
+    }
+    return {
+      text: h.text,
+      correctFirstTry: !!h.correctFirstTry,
+      skipped: !!h.skipped,
+      attempts: typeof h.attempts === "number" ? h.attempts : 1,
+      userGuess: h.userGuess != null && String(h.userGuess).trim() ? String(h.userGuess) : null,
+    };
+  }
+
+  function sectionStartIndex(lineIndex) {
+    const i = Math.min(Math.max(lineIndex, 0), LINES.length - 1);
+    for (let j = i; j >= 0; j--) {
+      if (LINES[j].section) return j;
+    }
+    return 0;
+  }
+
+  /** Start of the section to rewind to (previous section if sitting on a new section header). */
+  function resetSectionStartIndex(lineIndex) {
+    if (lineIndex >= LINES.length) {
+      return sectionStartIndex(LINES.length - 1);
+    }
+    if (lineIndex > 0 && LINES[lineIndex].section) {
+      return sectionStartIndex(lineIndex - 1);
+    }
+    return sectionStartIndex(lineIndex);
+  }
+
+  function recomputeStatsFromHistory() {
+    state.correct = state.history.filter((h) => h.correctFirstTry).length;
+    state.skips = state.history.filter((h) => h.skipped).length;
+    state.attempts = state.history.reduce((sum, h) => sum + h.attempts, 0);
+  }
+
+  function defaultState() {
+    return {
+      index: 0,
+      correct: 0,
+      attempts: 0,
+      skips: 0,
+      score: 0,
+      history: [],
+      lastFailurePoint: null,
+      mode: null,
+    };
+  }
+
+  function normalizePlayMode(mode) {
+    if (mode === PLAY_MODE_TYPING || mode === PLAY_MODE_CHOICES) return mode;
+    return null;
+  }
+
+  function applyPlayModeChrome() {
+    const mode = normalizePlayMode(state.mode);
+    shellEl.classList.toggle("is-mode-typing", mode === PLAY_MODE_TYPING);
+    shellEl.classList.toggle("is-mode-choices", mode === PLAY_MODE_CHOICES);
+  }
+
+  function countdownDurationSec() {
+    return state.mode === PLAY_MODE_CHOICES
+      ? COUNTDOWN_SEC_CHOICES
+      : COUNTDOWN_SEC_TYPING;
+  }
+
+  function beginLineInputForMode() {
+    if (state.mode === PLAY_MODE_CHOICES) {
+      clearHintChoicesMode();
+      startCountdown();
+      renderGuessChoices();
+      setHintChoicesVisible(true);
+      return;
+    }
+    clearHintChoicesMode();
+    startCountdown();
+  }
+
+  function showModeSelect() {
+    stopCountdown();
+    setCountdownVisible(false);
+    shellEl.classList.add("is-choosing-mode");
+    doneCard.hidden = true;
+    playCard.hidden = true;
+    modeCard.hidden = false;
+    clearHintChoicesMode();
+    renderHud();
+  }
+
+  function choosePlayMode(mode) {
+    const normalized = normalizePlayMode(mode);
+    if (!normalized) return;
+    state.mode = normalized;
+    saveState();
+    modeCard.hidden = true;
+    showPlayUi();
+  }
+
+  function readStoredHighScore(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      const n = raw != null ? Number(raw) : 0;
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function loadHighScoreRecord() {
+    let typing = readStoredHighScore(HIGH_SCORE_KEY_TYPING);
+    let choices = readStoredHighScore(HIGH_SCORE_KEY_CHOICES);
+    if (typing === 0 && choices === 0) {
+      const legacy = readStoredHighScore(HIGH_SCORE_KEY_LEGACY);
+      if (legacy > 0) typing = legacy;
+    }
+    return { typing, choices };
+  }
+
+  function persistHighScoreRecord() {
+    try {
+      localStorage.setItem(HIGH_SCORE_KEY_TYPING, String(highScoreRecord.typing));
+      localStorage.setItem(HIGH_SCORE_KEY_CHOICES, String(highScoreRecord.choices));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function highScoreForActiveMode() {
+    const mode = normalizePlayMode(state.mode);
+    if (mode === PLAY_MODE_CHOICES) return highScoreRecord.choices;
+    if (mode === PLAY_MODE_TYPING) return highScoreRecord.typing;
+    return 0;
+  }
+
+  function maybeBumpHighScore() {
+    const mode = normalizePlayMode(state.mode);
+    if (!mode) return;
+    const s = typeof state.score === "number" ? state.score : 0;
+    const field = mode === PLAY_MODE_CHOICES ? "choices" : "typing";
+    if (s > highScoreRecord[field]) {
+      highScoreRecord[field] = s;
+      persistHighScoreRecord();
+    }
+  }
+
+  function clearCountdownTimer() {
+    if (countdownTimer) {
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+    }
+  }
+
+  function setCountdownVisible(visible) {
+    countdownVisible = visible;
+    countdownWrapEl.classList.toggle("is-hidden", !visible);
+  }
+
+  function updateCountdownDisplay() {
+    countdownValueEl.textContent = String(Math.max(0, Math.ceil(countdownRemainingSec)));
+  }
+
+  function stopCountdown() {
+    clearCountdownTimer();
+    countdownRemainingSec = 0;
+    updateCountdownDisplay();
+  }
+
+  function startCountdown() {
+    clearCountdownTimer();
+    countdownRemainingSec = countdownDurationSec();
+    setCountdownVisible(true);
+    updateCountdownDisplay();
+    countdownTimer = setInterval(() => {
+      countdownRemainingSec -= 1;
+      if (countdownRemainingSec <= 0) {
+        countdownRemainingSec = 0;
+        clearCountdownTimer();
+      }
+      updateCountdownDisplay();
+    }, 1000);
+  }
+
+  function secondsLeftForBonus() {
+    return Math.max(0, Math.ceil(countdownRemainingSec));
+  }
+
+  function awardLineScore(viaTyping) {
+    const base = viaTyping ? SCORE_TYPING_BASE : SCORE_CHOICE_BASE;
+    const perSec = viaTyping ? SCORE_SEC_BONUS_TYPING : SCORE_SEC_BONUS_CHOICES;
+    let gained = base + secondsLeftForBonus() * perSec;
+    if (viaTyping) {
+      gained = Math.max(0, gained - lineRevealClicks * SCORE_TYPING_REVEAL_PENALTY);
+    }
+    state.score = (typeof state.score === "number" ? state.score : 0) + gained;
+    maybeBumpHighScore();
+    stopCountdown();
+    setCountdownVisible(false);
+  }
+
+  function lyricWordsForCurrentLine() {
+    const entry = currentEntry();
+    if (!entry) return [];
+    return String(entry.text).trim().split(/\s+/).filter(Boolean);
+  }
+
+  function getRevealedPrefixText() {
+    const words = lyricWordsForCurrentLine();
+    if (lineRevealStartCount <= 0) return "";
+    return words.slice(0, lineRevealStartCount).join(" ");
+  }
+
+  function getRevealedSuffixText() {
+    const words = lyricWordsForCurrentLine();
+    if (lineRevealEndCount <= 0) return "";
+    return words.slice(words.length - lineRevealEndCount).join(" ");
+  }
+
+  function updateTypingRevealChrome() {
+    const prefix = getRevealedPrefixText();
+    const suffix = getRevealedSuffixText();
+    if (typingRevealPrefix) {
+      typingRevealPrefix.textContent = prefix ? lyricDisplay(prefix) : "";
+      typingRevealPrefix.hidden = !prefix;
+    }
+    if (typingRevealSuffix) {
+      typingRevealSuffix.textContent = suffix ? lyricDisplay(suffix) : "";
+      typingRevealSuffix.hidden = !suffix;
+    }
+  }
+
+  function typingRevealActive() {
+    return lineRevealStartCount > 0 || lineRevealEndCount > 0;
+  }
+
+  function currentTypingGuess() {
+    if (!typingRevealActive()) return input.value;
+    const parts = [];
+    const prefix = getRevealedPrefixText();
+    const suffix = getRevealedSuffixText();
+    const middle = String(input.value || "").trim();
+    if (prefix) parts.push(prefix);
+    if (middle) parts.push(middle);
+    if (suffix) parts.push(suffix);
+    return parts.join(" ");
+  }
+
+  function resetTypingRevealState() {
+    lineRevealStartCount = 0;
+    lineRevealEndCount = 0;
+    lineRevealClicks = 0;
+    userTypingMiddle = "";
+    if (typingRevealPrefix) {
+      typingRevealPrefix.textContent = "";
+      typingRevealPrefix.hidden = true;
+    }
+    if (typingRevealSuffix) {
+      typingRevealSuffix.textContent = "";
+      typingRevealSuffix.hidden = true;
+    }
+    if (typingRevealBtn) typingRevealBtn.disabled = false;
+  }
+
+  function typingRevealRemainingSlots() {
+    const words = lyricWordsForCurrentLine();
+    return Math.max(0, words.length - lineRevealStartCount - lineRevealEndCount);
+  }
+
+  function applyTypingRevealWord() {
+    if (videoPlaybackActive) return;
+    if (state.mode !== PLAY_MODE_TYPING || input.disabled) return;
+    if (typingRevealRemainingSlots() <= 0) return;
+    if (!typingRevealActive()) {
+      userTypingMiddle = input.value.trim();
+      input.value = userTypingMiddle ? lyricDisplay(userTypingMiddle) : "";
+    }
+    lineRevealClicks += 1;
+    const fromStart = Math.random() < 0.5;
+    if (fromStart) lineRevealStartCount += 1;
+    else lineRevealEndCount += 1;
+    updateTypingRevealChrome();
+    if (typingRevealRemainingSlots() <= 0) {
+      completeLineViaReveal();
+      return;
+    }
+    input.focus();
+  }
+
+  function completeLineViaReveal() {
+    const entry = currentEntry();
+    if (!entry) return;
+    clearFeedback();
+    stopCountdown();
+    setCountdownVisible(false);
+    input.value = "";
+    updateTypingRevealChrome();
+    if (typingRevealPrefix) typingRevealPrefix.hidden = false;
+    if (typingRevealSuffix) typingRevealSuffix.hidden = false;
+    if (typingRevealPrefix) typingRevealPrefix.textContent = lyricDisplay(entry.text);
+    input.disabled = true;
+    if (typingRevealBtn) typingRevealBtn.disabled = true;
+    state.attempts += 1;
+    lineAttempts += 1;
+    const attemptsThisLine = lineAttempts > 0 ? lineAttempts : 1;
+    state.history.push({
+      text: entry.text,
+      correctFirstTry: false,
+      skipped: false,
+      attempts: attemptsThisLine,
+    });
+    lineAttempts = 0;
+    resetTypingRevealState();
+    state.index += 1;
+    state.flickerHistoryKey = state.history.length - 1;
+    saveState();
+    if (state.index >= LINES.length) {
+      renderHistory();
+      renderHud();
+      syncVideoToProgress();
+      showDone();
+      return;
+    }
+    showPlayUi();
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultState();
+      const parsed = JSON.parse(raw);
+      if (typeof parsed.index !== "number") return defaultState();
+      const merged = { ...defaultState(), ...parsed };
+      merged.history = (merged.history || []).map(normalizeHistoryEntry);
+      if (typeof merged.score !== "number" || !Number.isFinite(merged.score)) {
+        merged.score = 0;
+      }
+      merged.mode = normalizePlayMode(merged.mode);
+      if (!merged.mode && (merged.index > 0 || (merged.history && merged.history.length > 0))) {
+        merged.mode = PLAY_MODE_TYPING;
+      }
+      return merged;
+    } catch {
+      return defaultState();
+    }
+  }
+
+  function saveState() {
+    const toSave = { ...state };
+    delete toSave.flickerHistoryKey;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  }
+
+  function captureFailurePoint() {
+    state.lastFailurePoint = {
+      index: state.index,
+      history: state.history.slice(),
+      correct: state.correct,
+      skips: state.skips,
+      attempts: state.attempts,
+    };
+  }
+
+  function failurePointIsReachable() {
+    const fp = state.lastFailurePoint;
+    if (!fp || typeof fp.index !== "number") return false;
+    if (state.index !== fp.index) return true;
+    if (state.history.length !== fp.history.length) return true;
+    return false;
+  }
+
+  function sectionResetIsReachable() {
+    const target = resetSectionStartIndex(state.index);
+    if (state.index > target) return true;
+    if (state.history.length > target) return true;
+    return false;
+  }
+
+  function restoreSectionStart() {
+    const target = resetSectionStartIndex(state.index);
+    if (!sectionResetIsReachable()) return;
+    state.index = target;
+    state.history = state.history.slice(0, target).map(normalizeHistoryEntry);
+    recomputeStatsFromHistory();
+    lineAttempts = 0;
+    saveState();
+    showPlayUi();
+  }
+
+  function restoreLastFailurePoint() {
+    const fp = state.lastFailurePoint;
+    if (!fp || !failurePointIsReachable()) return;
+    state.index = fp.index;
+    state.history = fp.history.slice();
+    state.correct = fp.correct;
+    state.skips = fp.skips;
+    state.attempts = fp.attempts;
+    saveState();
+    showPlayUi();
+  }
+
+  function lyricDisplay(s) {
+    return String(s).toUpperCase();
+  }
+
+  function normalize(s) {
+    return s
+      .trim()
+      .replace(/\s+/g, " ")
+      .replace(/[\u2018\u2019\u201B]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[’]/g, "'")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function lettersOnlyKey(s) {
+    return String(s)
+      .toLowerCase()
+      .replace(/[^a-z]/g, "");
+  }
+
+  function levenshteinDistance(a, b) {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    const rows = a.length + 1;
+    const cols = b.length + 1;
+    const dp = new Array(cols);
+    for (let j = 0; j < cols; j++) dp[j] = j;
+    for (let i = 1; i < rows; i++) {
+      let prev = i - 1;
+      dp[0] = i;
+      for (let j = 1; j < cols; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        const next = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
+        prev = dp[j];
+        dp[j] = next;
+      }
+    }
+    return dp[cols - 1];
+  }
+
+  function maxTypingFuzzyEditDistance(letterLen) {
+    if (letterLen < 5) return 0;
+    const scaled = Math.floor(letterLen * TYPING_FUZZY_MAX_EDIT_RATIO);
+    return Math.min(TYPING_FUZZY_MAX_EDIT_ABSOLUTE, Math.max(1, scaled));
+  }
+
+  function linesMatch(guess, expected, opts = {}) {
+    const fuzzy = Boolean(opts.fuzzy);
+    const a = lettersOnlyKey(guess);
+    const b = lettersOnlyKey(expected);
+    if (a === b) return true;
+    if (!fuzzy) return false;
+    const len = Math.max(a.length, b.length);
+    const maxDist = maxTypingFuzzyEditDistance(len);
+    if (maxDist === 0) return false;
+    return levenshteinDistance(a, b) <= maxDist;
+  }
+
+  function shuffleInPlace(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function choiceTextKey(text) {
+    return normalize(text);
+  }
+
+  function pickDistractorLines(lineIndex, count) {
+    const correctKey = choiceTextKey(LINES[lineIndex].text);
+    const chosen = new Map();
+
+    function tryAdd(text) {
+      if (chosen.size >= count) return;
+      const key = choiceTextKey(text);
+      if (key === correctKey || chosen.has(key)) return;
+      chosen.set(key, text);
+    }
+
+    const upcoming = [];
+    for (let i = lineIndex + 1; i < LINES.length; i++) {
+      upcoming.push(LINES[i].text);
+    }
+    shuffleInPlace(upcoming);
+    for (const text of upcoming) tryAdd(text);
+
+    if (chosen.size < count) {
+      const fallback = [];
+      for (let i = 0; i < LINES.length; i++) {
+        if (i === lineIndex) continue;
+        fallback.push(LINES[i].text);
+      }
+      shuffleInPlace(fallback);
+      for (const text of fallback) tryAdd(text);
+    }
+    return [...chosen.values()];
+  }
+
+  function clearGuessChoiceButtons() {
+    guessChoicesEl.innerHTML = "";
+  }
+
+  function setHintChoicesVisible(open) {
+    hintChoicesOpen = open;
+    guessSlot.classList.toggle("is-choices-mode", open);
+    guessChoicesEl.classList.toggle("is-visible", open);
+    skipBtn.classList.toggle("is-armed", open);
+    skipBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    skipBtn.setAttribute(
+      "aria-label",
+      open ? "Reveal answer" : "Show answer choices"
+    );
+    skipBtn.title = open ? "Reveal answer" : "Pick from choices (tap again to reveal)";
+  }
+
+  function clearHintChoicesMode() {
+    clearGuessChoiceButtons();
+    setHintChoicesVisible(false);
+  }
+
+  function openHintChoices() {
+    if (videoPlaybackActive) return;
+    stopCountdown();
+    setCountdownVisible(false);
+    renderGuessChoices();
+    setHintChoicesVisible(true);
+  }
+
+  function renderGuessChoices() {
+    clearGuessChoiceButtons();
+    const entry = currentEntry();
+    if (!entry) return;
+    const correct = entry.text;
+    const distractors = pickDistractorLines(state.index, 2);
+    const seenKeys = new Set();
+    const options = [];
+    function pushUniqueOption(text) {
+      const key = choiceTextKey(text);
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+      options.push(text);
+    }
+    pushUniqueOption(correct);
+    distractors.forEach(pushUniqueOption);
+    shuffleInPlace(options);
+    options.forEach((text) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "guess-choice";
+      btn.textContent = lyricDisplay(text);
+      btn.addEventListener("click", () => {
+        if (videoPlaybackActive || input.disabled) return;
+        input.value = lyricDisplay(text);
+        submitCurrentGuess(text, { viaChoices: true });
+      });
+      guessChoicesEl.appendChild(btn);
+    });
+    const disabled = videoPlaybackActive || input.disabled;
+    guessChoicesEl.querySelectorAll(".guess-choice").forEach((btn) => {
+      btn.disabled = disabled;
+    });
+  }
+
+  function setGuessChoicesDisabled(disabled) {
+    guessChoicesEl.querySelectorAll(".guess-choice").forEach((btn) => {
+      btn.disabled = disabled;
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function normalizeWord(w) {
+    return normalize(w).replace(/\s+/g, "");
+  }
+
+  function wordCharDiffHtml(expectedWord, guessWord) {
+    const e = lyricDisplay(expectedWord);
+    const g = lyricDisplay(guessWord);
+    if (normalizeWord(e) === normalizeWord(g)) {
+      return escapeHtml(g);
+    }
+    let html = "";
+    for (let i = 0; i < g.length; i++) {
+      const ch = g[i];
+      const ok = i < e.length && ch === e[i];
+      if (ok) html += escapeHtml(ch);
+      else html += `<span class="diff-char-wrong">${escapeHtml(ch)}</span>`;
+    }
+    return html;
+  }
+
+  function buildGuessDiffHtml(expected, guess) {
+    const expWords = lyricDisplay(expected).trim().split(/\s+/).filter(Boolean);
+    const guessWords = lyricDisplay(guess).trim().split(/\s+/).filter(Boolean);
+    const parts = [];
+    for (let i = 0; i < guessWords.length; i++) {
+      const w = guessWords[i];
+      const ew = i < expWords.length ? expWords[i] : null;
+      if (ew && normalizeWord(w) === normalizeWord(ew)) {
+        parts.push(escapeHtml(w));
+      } else if (ew) {
+        parts.push(wordCharDiffHtml(ew, w));
+      } else {
+        parts.push(`<span class="diff-wrong">${escapeHtml(w)}</span>`);
+      }
+    }
+    return parts.join(" ");
+  }
+
+  function applyHistoryFlickerVisible(visible) {
+    if (!flickerAnswerEl) return;
+    flickerAnswerEl.classList.toggle("is-flicker-on", visible);
+    flickerAnswerEl.classList.toggle("is-flicker-off", !visible);
+  }
+
+  function stopHistoryFlicker() {
+    historyFlickerActive = false;
+    historyFlickerStartT = null;
+    if (flickerAnswerEl) {
+      flickerAnswerEl.classList.remove("is-flicker-red", "is-flicker-on", "is-flicker-off");
+      flickerAnswerEl = null;
+    }
+  }
+
+  function tickHistoryFlicker(t) {
+    if (!historyFlickerActive || !flickerAnswerEl) return;
+    if (historyFlickerStartT == null) historyFlickerStartT = t;
+    if (t - historyFlickerStartT > LINE_FADE_MS) {
+      stopHistoryFlicker();
+      if (state.flickerHistoryKey != null) {
+        state.flickerHistoryKey = null;
+        saveState();
+      }
+      return;
+    }
+    const elapsed = t - historyFlickerStartT;
+    const visible = Math.floor(elapsed / HISTORY_FLICKER_PERIOD_MS) % 2 === 0;
+    applyHistoryFlickerVisible(visible);
+  }
+
+  function startPortalFlickerLoop() {
+    if (portalFlickerLoopStarted) return;
+    portalFlickerLoopStarted = true;
+    function frame(t) {
+      tickHistoryFlicker(t);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function startHistoryFlicker(el) {
+    stopHistoryFlicker();
+    flickerAnswerEl = el;
+    historyFlickerActive = true;
+    historyFlickerStartT = null;
+    el.classList.add("is-flicker-red", "is-flicker-on");
+    startPortalFlickerLoop();
+  }
+
+  function renderHistory() {
+    historyEl.innerHTML = "";
+    stopHistoryFlicker();
+    const displayLines = [];
+    for (let hi = 0; hi < state.history.length; hi++) {
+      const entry = state.history[hi];
+      if (entry.userGuess) displayLines.push({ type: "attempt", entry, hi });
+      displayLines.push({ type: "answer", entry, hi });
+    }
+    const recent = displayLines.slice(-6);
+    let flickerEl = null;
+    for (const row of recent) {
+      if (row.type === "answer") {
+        const answer = document.createElement("div");
+        answer.className = "history-line is-answer";
+        answer.textContent = lyricDisplay(row.entry.text);
+        if (state.flickerHistoryKey === row.hi) flickerEl = answer;
+        historyEl.appendChild(answer);
+      } else {
+        const attempt = document.createElement("div");
+        attempt.className = "history-line is-attempt";
+        attempt.textContent = lyricDisplay(row.entry.userGuess);
+        historyEl.appendChild(attempt);
+      }
+    }
+    if (flickerEl) startHistoryFlicker(flickerEl);
+  }
+
+  function renderHud() {
+    const score = typeof state.score === "number" ? state.score : 0;
+    scoreValueEl.textContent = String(score);
+    highScoreValueEl.textContent = String(highScoreForActiveMode());
+    if (allLinesOpen) renderAllLines();
+  }
+
+  function renderAllLines() {
+    allLinesBody.innerHTML = "";
+    for (let i = 0; i < LINES.length; i++) {
+      const line = LINES[i];
+      if (line.section) {
+        const sec = document.createElement("div");
+        sec.className = "lyric-section";
+        sec.textContent = line.section;
+        allLinesBody.appendChild(sec);
+      }
+      const row = document.createElement("div");
+      row.className = "lyric-row";
+      if (i === state.index && state.index < LINES.length) {
+        row.classList.add("is-current");
+      }
+      const num = document.createElement("span");
+      num.className = "lyric-n";
+      num.textContent = String(i + 1);
+      row.appendChild(num);
+      row.appendChild(document.createTextNode(lyricDisplay(line.text)));
+      allLinesBody.appendChild(row);
+    }
+  }
+
+  function setAllLinesOpen(open) {
+    allLinesOpen = open;
+    if (open) {
+      allLinesPanel.hidden = false;
+      allLinesPanel.classList.add("is-open");
+      renderAllLines();
+      const current = allLinesPanel.querySelector(".lyric-row.is-current");
+      if (current) current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    } else {
+      allLinesPanel.classList.remove("is-open");
+      allLinesPanel.hidden = true;
+    }
+  }
+
+  function clearFeedback() {
+    feedback.textContent = "";
+    feedback.className = "feedback";
+    reveal.classList.remove("is-visible");
+    clearHintChoicesMode();
+    nextAfterWrong.hidden = true;
+  }
+
+  function currentEntry() {
+    if (state.index >= LINES.length) return null;
+    return LINES[state.index];
+  }
+
+  function showPlayUi() {
+    if (!normalizePlayMode(state.mode)) {
+      showModeSelect();
+      return;
+    }
+    shellEl.classList.remove("is-choosing-mode");
+    applyPlayModeChrome();
+    playCard.hidden = false;
+    doneCard.hidden = true;
+    modeCard.hidden = true;
+    clearFeedback();
+    const entry = currentEntry();
+    if (!entry) {
+      showDone();
+      return;
+    }
+    input.value = "";
+    input.disabled = false;
+    lineAttempts = 0;
+    resetTypingRevealState();
+    if (state.mode === PLAY_MODE_TYPING) {
+      input.focus();
+    }
+    skipBtn.disabled = false;
+    renderHistory();
+    renderHud();
+    beginLineInputForMode();
+    syncVideoToProgress();
+    refreshPlayControlsForVideo();
+  }
+
+  function showDone() {
+    shellEl.classList.remove("is-choosing-mode");
+    pauseYoutube();
+    stopCountdown();
+    setCountdownVisible(false);
+    playCard.hidden = true;
+    doneCard.hidden = false;
+    const score = typeof state.score === "number" ? state.score : 0;
+    doneSummary.textContent =
+      `Score ${score.toLocaleString()} · best ${highScoreForActiveMode().toLocaleString()}.`;
+    renderHud();
+  }
+
+  function advance(correctFirstTry, skipped) {
+    const entry = currentEntry();
+    if (!entry) return;
+    const attemptsThisLine =
+      lineAttempts > 0 ? lineAttempts : skipped ? 0 : 1;
+    state.history.push({
+      text: entry.text,
+      correctFirstTry: !!correctFirstTry,
+      skipped: !!skipped,
+      attempts: attemptsThisLine,
+    });
+    if (correctFirstTry) state.correct += 1;
+    if (skipped) state.skips += 1;
+    lineAttempts = 0;
+    state.index += 1;
+    if (skipped) state.flickerHistoryKey = state.history.length - 1;
+    saveState();
+    if (state.index >= LINES.length) {
+      if (skipped) {
+        stopCountdown();
+        setCountdownVisible(false);
+        renderHistory();
+        renderHud();
+        syncVideoToProgress();
+      }
+      showDone();
+    } else showPlayUi();
+  }
+
+  function afterCheck(wasCorrect, expectedText, guess, resolveOpts = {}) {
+    if (wasCorrect) {
+      const entry = currentEntry();
+      if (!entry) return;
+      clearFeedback();
+      const viaTyping = !resolveOpts.viaChoices;
+      awardLineScore(viaTyping);
+      const attemptsThisLine = lineAttempts > 0 ? lineAttempts : 1;
+      const firstTry = lineAttempts === 1;
+      state.history.push({
+        text: entry.text,
+        correctFirstTry: firstTry,
+        skipped: false,
+        attempts: attemptsThisLine,
+      });
+      if (firstTry) state.correct += 1;
+      lineAttempts = 0;
+      state.index += 1;
+      state.flickerHistoryKey = state.history.length - 1;
+      saveState();
+      if (state.index >= LINES.length) {
+        renderHistory();
+        renderHud();
+        syncVideoToProgress();
+        showDone();
+        return;
+      }
+      showPlayUi();
+      return;
+    }
+    const entry = currentEntry();
+    if (!entry) return;
+    captureFailurePoint();
+    const attemptsThisLine = lineAttempts > 0 ? lineAttempts : 1;
+    state.history.push({
+      text: entry.text,
+      userGuess: guess,
+      correctFirstTry: false,
+      skipped: false,
+      attempts: attemptsThisLine,
+    });
+    lineAttempts = 0;
+    state.index += 1;
+    saveState();
+    reveal.classList.remove("is-visible");
+    input.disabled = false;
+    feedback.textContent = "";
+    feedback.className = "feedback";
+    skipBtn.disabled = false;
+    nextAfterWrong.hidden = true;
+    renderHistory();
+    renderHud();
+    syncVideoToProgress();
+    if (state.index >= LINES.length) {
+      setTimeout(() => showDone(), 400);
+      return;
+    }
+    input.value = "";
+    if (state.mode === PLAY_MODE_TYPING) {
+      input.focus();
+      clearHintChoicesMode();
+      startCountdown();
+    } else {
+      beginLineInputForMode();
+    }
+  }
+
+  function submitCurrentGuess(guessRaw, resolveOpts = {}) {
+    if (videoPlaybackActive) return;
+    const entry = currentEntry();
+    if (!entry) return;
+    const guess =
+      typeof guessRaw === "string"
+        ? guessRaw
+        : state.mode === PLAY_MODE_TYPING
+          ? currentTypingGuess()
+          : input.value;
+    if (!String(guess).trim()) {
+      feedback.textContent = "Type something first, or pick a line.";
+      feedback.className = "feedback is-bad";
+      return;
+    }
+    state.attempts += 1;
+    lineAttempts += 1;
+    saveState();
+    const ok = linesMatch(guess, entry.text, {
+      fuzzy:
+        state.mode === PLAY_MODE_TYPING && !resolveOpts.viaChoices,
+    });
+    afterCheck(ok, entry.text, guess, resolveOpts);
+    renderHud();
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (state.mode !== PLAY_MODE_TYPING || videoPlaybackActive) return;
+    submitCurrentGuess();
+  });
+
+  input.addEventListener("input", () => {
+    if (videoPlaybackActive) return;
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const up = input.value.toUpperCase();
+    if (input.value !== up) {
+      input.value = up;
+      if (start != null && end != null) {
+        input.setSelectionRange(start, end);
+      }
+    }
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    if (videoPlaybackActive || input.disabled || hintChoicesOpen) return;
+    e.preventDefault();
+    form.requestSubmit();
+  });
+
+  typingRevealBtn.addEventListener("click", () => {
+    applyTypingRevealWord();
+  });
+
+  skipBtn.addEventListener("click", () => {
+    if (videoPlaybackActive) return;
+    if (!hintChoicesOpen) {
+      openHintChoices();
+      return;
+    }
+    clearHintChoicesMode();
+    advance(false, true);
+    renderHud();
+  });
+
+  nextAfterWrong.addEventListener("click", () => {
+    advance(false, false);
+  });
+
+  restartBtn.addEventListener("click", () => {
+    state = defaultState();
+    saveState();
+    showModeSelect();
+  });
+
+  function runReset() {
+    if (restartConfirmDialog.open) restartConfirmDialog.close();
+    state = defaultState();
+    saveState();
+    showModeSelect();
+  }
+
+  function clearDialogAutoFocus(dialogEl) {
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active && (dialogEl === active || dialogEl.contains(active))) {
+        active.blur();
+      }
+    });
+  }
+
+  function openRestartConfirm() {
+    if (typeof restartConfirmDialog.showModal === "function") {
+      restartConfirmDialog.showModal();
+      clearDialogAutoFocus(restartConfirmDialog);
+    } else {
+      runReset();
+    }
+  }
+
+  modeTypingBtn.addEventListener("click", () => choosePlayMode(PLAY_MODE_TYPING));
+  modeChoicesBtn.addEventListener("click", () => choosePlayMode(PLAY_MODE_CHOICES));
+
+  resetProgress.addEventListener("click", openRestartConfirm);
+  restartConfirmCancel.addEventListener("click", () => restartConfirmDialog.close());
+  restartConfirmOk.addEventListener("click", runReset);
+
+  videoRosesToggle.addEventListener("click", () => {
+    if (videoPlaybackActive) pauseYoutube();
+    else playCurrentSection();
+  });
+
+  startPortalFlickerLoop();
+  initYoutubeEmbed();
+  maybeBumpHighScore();
+  renderHud();
+  if (state.index >= LINES.length) showDone();
+  else if (!normalizePlayMode(state.mode)) showModeSelect();
+  else showPlayUi();
+})();
+</script>
+</body>
+</html>
