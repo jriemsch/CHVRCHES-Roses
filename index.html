@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Roses — learn</title>
 <style>
   :root {
@@ -304,7 +305,8 @@
     background: transparent;
     color: var(--accent);
     font: inherit;
-    font-size: 0.9rem;
+    /* ≥16px prevents iOS Safari from zooming the page when the keyboard opens */
+    font-size: max(0.9rem, 16px);
     line-height: 1.45;
     padding: 0.12rem 0;
     caret-color: var(--accent);
@@ -697,7 +699,7 @@
     <div class="youtube-embed">
       <iframe
         id="youtube-embed"
-        src="https://www.youtube.com/embed/3x2BXn0cPM8"
+        src="https://www.youtube-nocookie.com/embed/3x2BXn0cPM8?playsinline=1&amp;rel=0&amp;modestbranding=1"
         title="CHVRCHES - Roses (Official Lyric Video)"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         referrerpolicy="strict-origin-when-cross-origin"
@@ -1057,6 +1059,7 @@
   function initYoutubeEmbed() {
     bindYoutubeMessages();
     lastVideoSectionLineStart = sectionStartIndex(state.index);
+    ensureYoutubeApiEmbed();
   }
 
   function syncVideoToProgress() {
