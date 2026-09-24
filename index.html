@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Roses — learn</title>
 <style>
   :root {
@@ -701,6 +702,7 @@
         src="https://www.youtube.com/embed/3x2BXn0cPM8?playsinline=1&amp;rel=0&amp;modestbranding=1"
         title="CHVRCHES - Roses (Official Lyric Video)"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        referrerpolicy="strict-origin-when-cross-origin"
         allowfullscreen
       ></iframe>
     </div>
@@ -917,6 +919,20 @@
     return "www.youtube.com";
   }
 
+  function youtubePostMessageTarget() {
+    return `https://${youtubeEmbedHost()}`;
+  }
+
+  function sendYoutubeListeningHandshake() {
+    const win = youtubeIframe?.contentWindow;
+    if (!win) return;
+    const id = youtubeIframe.id || "youtube-embed";
+    win.postMessage(
+      JSON.stringify({ event: "listening", id, channel: "widget" }),
+      youtubePostMessageTarget()
+    );
+  }
+
   /** Chord-viewer shape: enablejsapi + origin only — no start/end in the URL (seek via API). */
   function youtubeEmbedSrc({ api = true } = {}) {
     const params = new URLSearchParams({
@@ -937,11 +953,11 @@
     return youtubeEmbedSrc({ api: true });
   }
 
-  function youtubeCommand(func, args = "") {
+  function youtubeCommand(func, args = []) {
     if (!youtubeIframe?.contentWindow) return;
     youtubeIframe.contentWindow.postMessage(
       JSON.stringify({ event: "command", func, args }),
-      "*"
+      youtubePostMessageTarget()
     );
   }
 
@@ -1014,7 +1030,7 @@
     const runReady = () => {
       youtubeReady = true;
       youtubeCommand("addEventListener", ["onStateChange"]);
-      youtubeIframe.contentWindow?.postMessage('{"event":"listening"}', "*");
+      sendYoutubeListeningHandshake();
       onReady?.();
     };
     const current = youtubeIframe.src || "";
