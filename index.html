@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Roses — learn</title>
 <style>
   :root {
@@ -515,6 +514,54 @@
     height: 100%;
     border: 0;
   }
+  .youtube-external-play {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 0.45rem;
+    text-decoration: none;
+    color: var(--text);
+    background: #000;
+  }
+  .youtube-external-play img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.72;
+  }
+  .youtube-external-play span {
+    position: absolute;
+    bottom: 0.65rem;
+    left: 0.65rem;
+    right: 0.65rem;
+    padding: 0.45rem 0.55rem;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    font-size: 0.78rem;
+    text-align: center;
+    line-height: 1.35;
+  }
+  html.is-yt-external-play .youtube-embed iframe {
+    display: none;
+  }
+  html.is-yt-external-play .youtube-external-play {
+    display: flex;
+  }
+  .video-panel-hint {
+    display: none;
+    margin: 0;
+    padding: 0 0.85rem 0.55rem;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: var(--muted);
+  }
+  html.is-yt-external-play .video-panel-hint {
+    display: block;
+  }
   .video-actions {
     display: flex;
     flex-wrap: wrap;
@@ -702,9 +749,24 @@
         src="https://www.youtube.com/embed/3x2BXn0cPM8?playsinline=1&amp;rel=0&amp;modestbranding=1"
         title="CHVRCHES - Roses (Official Lyric Video)"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-        referrerpolicy="strict-origin-when-cross-origin"
         allowfullscreen
       ></iframe>
+      <a
+        class="youtube-external-play"
+        id="youtube-external-play"
+        href="https://www.youtube.com/watch?v=3x2BXn0cPM8"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <img
+          src="https://i.ytimg.com/vi/3x2BXn0cPM8/hqdefault.jpg"
+          alt=""
+          width="480"
+          height="360"
+          decoding="async"
+        />
+        <span>Open lyric video in YouTube</span>
+      </a>
     </div>
     <div class="video-actions">
       <button
@@ -870,6 +932,7 @@
   const allLinesPanel = document.getElementById("all-lines");
   const allLinesBody = document.getElementById("all-lines-body");
   const youtubeIframe = document.getElementById("youtube-embed");
+  const youtubeExternalPlay = document.getElementById("youtube-external-play");
   const videoRosesToggle = document.getElementById("video-roses-toggle");
   const guessRow = document.getElementById("guess-row");
   const guessSlot = document.getElementById("guess-slot");
@@ -916,8 +979,20 @@
     return /Safari/.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/.test(ua);
   }
 
+  function youtubeWatchUrl(startSec = 0) {
+    const params = new URLSearchParams({ v: YOUTUBE_VIDEO_ID });
+    const t = Math.max(0, Math.floor(startSec));
+    if (t > 0) params.set("t", `${t}s`);
+    return `https://www.youtube.com/watch?${params}`;
+  }
+
+  function syncExternalYoutubeLink(startSec = 0) {
+    if (!youtubeExternalPlay) return;
+    youtubeExternalPlay.href = youtubeWatchUrl(startSec);
+  }
+
   function youtubeEmbedHost() {
-    return prefersYoutubeUrlSectionPlay() ? "www.youtube.com" : "www.youtube-nocookie.com";
+    return "www.youtube.com";
   }
 
   function youtubePostMessageTarget() {
@@ -939,8 +1014,6 @@
     if (clip) {
       params.set("start", String(Math.max(0, Math.floor(clip.start))));
       params.set("end", String(Math.max(1, Math.ceil(clip.end))));
-    } else if (YOUTUBE_DURATION_SEC > 0 && api) {
-      params.set("end", String(Math.round(YOUTUBE_DURATION_SEC)));
     }
     if (autoplay) params.set("autoplay", "1");
     const host = youtubeEmbedHost();
@@ -1109,15 +1182,15 @@
   function initYoutubeEmbed() {
     bindYoutubeMessages();
     lastVideoSectionLineStart = sectionStartIndex(state.index);
-    if (!prefersYoutubeUrlSectionPlay()) {
-      ensureYoutubeApiEmbed();
-    }
+    syncExternalYoutubeLink(sectionVideoForLineIndex(state.index).start);
+    /* Leave the static iframe src from markup — do not swap to enablejsapi/end on load. */
   }
 
   function syncVideoToProgress() {
     const secStart = sectionStartIndex(state.index);
     if (secStart === lastVideoSectionLineStart) return;
     lastVideoSectionLineStart = secStart;
+    syncExternalYoutubeLink(sectionVideoForLineIndex(state.index).start);
     pauseYoutube();
   }
 
