@@ -514,54 +514,6 @@
     height: 100%;
     border: 0;
   }
-  .youtube-external-play {
-    display: none;
-    position: absolute;
-    inset: 0;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 0.45rem;
-    text-decoration: none;
-    color: var(--text);
-    background: #000;
-  }
-  .youtube-external-play img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    opacity: 0.72;
-  }
-  .youtube-external-play span {
-    position: absolute;
-    bottom: 0.65rem;
-    left: 0.65rem;
-    right: 0.65rem;
-    padding: 0.45rem 0.55rem;
-    border-radius: 8px;
-    background: rgba(0, 0, 0, 0.72);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    font-size: 0.78rem;
-    text-align: center;
-    line-height: 1.35;
-  }
-  html.is-yt-external-play .youtube-embed iframe {
-    display: none;
-  }
-  html.is-yt-external-play .youtube-external-play {
-    display: flex;
-  }
-  .video-panel-hint {
-    display: none;
-    margin: 0;
-    padding: 0 0.85rem 0.55rem;
-    font-size: 0.72rem;
-    line-height: 1.35;
-    color: var(--muted);
-  }
-  html.is-yt-external-play .video-panel-hint {
-    display: block;
-  }
   .video-actions {
     display: flex;
     flex-wrap: wrap;
@@ -746,27 +698,11 @@
     <div class="youtube-embed">
       <iframe
         id="youtube-embed"
-        src="https://www.youtube.com/embed/3x2BXn0cPM8?playsinline=1&amp;rel=0&amp;modestbranding=1"
+        src="https://www.youtube-nocookie.com/embed/3x2BXn0cPM8?playsinline=1&amp;rel=0&amp;modestbranding=1"
         title="CHVRCHES - Roses (Official Lyric Video)"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowfullscreen
       ></iframe>
-      <a
-        class="youtube-external-play"
-        id="youtube-external-play"
-        href="https://www.youtube.com/watch?v=3x2BXn0cPM8"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <img
-          src="https://i.ytimg.com/vi/3x2BXn0cPM8/hqdefault.jpg"
-          alt=""
-          width="480"
-          height="360"
-          decoding="async"
-        />
-        <span>Open lyric video in YouTube</span>
-      </a>
     </div>
     <div class="video-actions">
       <button
@@ -805,6 +741,12 @@
 </dialog>
 <script>
 (function () {
+  if (location.hostname === "127.0.0.1") {
+    const url = new URL(location.href);
+    url.hostname = "localhost";
+    location.replace(url.toString());
+  }
+
   /** Same sequence as roses-lyric-field.html (single pass through the song). */
   const LINES = [
     { section: "Verse 1", text: "On the edge of a city in a slow dive" },
@@ -932,7 +874,6 @@
   const allLinesPanel = document.getElementById("all-lines");
   const allLinesBody = document.getElementById("all-lines-body");
   const youtubeIframe = document.getElementById("youtube-embed");
-  const youtubeExternalPlay = document.getElementById("youtube-external-play");
   const videoRosesToggle = document.getElementById("video-roses-toggle");
   const guessRow = document.getElementById("guess-row");
   const guessSlot = document.getElementById("guess-slot");
@@ -956,6 +897,8 @@
   let historyFlickerStartT = null;
   let portalFlickerLoopStarted = false;
   let youtubeReady = false;
+  /** True only while the roses control is driving a bounded section clip. */
+  let sectionPlaySession = false;
   let sectionStopTimer = null;
   let lastVideoSectionLineStart = null;
   let videoPlaybackActive = false;
@@ -964,43 +907,18 @@
   let lineRevealClicks = 0;
   let userTypingMiddle = "";
 
-  /** Must match the portal tab origin exactly (chord-viewer pattern; do not remap 127.0.0.1 → localhost). */
+  /** Match chord-viewer: stable origin for enablejsapi (127.0.0.1 → localhost). */
   function embedOrigin() {
-    return window.location.origin;
-  }
-
-  /** iOS Safari blocks postMessage play/seek from outer buttons; use URL navigation on tap instead. */
-  function prefersYoutubeUrlSectionPlay() {
-    const ua = navigator.userAgent;
-    const isIOS =
-      /iPad|iPhone|iPod/.test(ua) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    if (isIOS) return true;
-    return /Safari/.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/.test(ua);
-  }
-
-  function youtubeWatchUrl(startSec = 0) {
-    const params = new URLSearchParams({ v: YOUTUBE_VIDEO_ID });
-    const t = Math.max(0, Math.floor(startSec));
-    if (t > 0) params.set("t", `${t}s`);
-    return `https://www.youtube.com/watch?${params}`;
-  }
-
-  function syncExternalYoutubeLink(startSec = 0) {
-    if (!youtubeExternalPlay) return;
-    youtubeExternalPlay.href = youtubeWatchUrl(startSec);
+    const host = location.hostname === "127.0.0.1" ? "localhost" : location.hostname;
+    return `${location.protocol}//${host}${location.port ? `:${location.port}` : ""}`;
   }
 
   function youtubeEmbedHost() {
-    return "www.youtube.com";
+    return "www.youtube-nocookie.com";
   }
 
-  function youtubePostMessageTarget() {
-    return `https://${youtubeEmbedHost()}`;
-  }
-
-  /** Same URL shape as chord-viewer `youtubeEmbedSrc` (enablejsapi + optional section clip). */
-  function youtubeEmbedSrc({ clip = null, autoplay = false, api = true } = {}) {
+  /** Chord-viewer shape: enablejsapi + origin only — no start/end in the URL (seek via API). */
+  function youtubeEmbedSrc({ api = true } = {}) {
     const params = new URLSearchParams({
       rel: "0",
       modestbranding: "1",
@@ -1011,11 +929,6 @@
       params.set("origin", embedOrigin());
       params.set("enablejsapi", "1");
     }
-    if (clip) {
-      params.set("start", String(Math.max(0, Math.floor(clip.start))));
-      params.set("end", String(Math.max(1, Math.ceil(clip.end))));
-    }
-    if (autoplay) params.set("autoplay", "1");
     const host = youtubeEmbedHost();
     return `https://${host}/embed/${encodeURIComponent(YOUTUBE_VIDEO_ID)}?${params}`;
   }
@@ -1028,7 +941,7 @@
     if (!youtubeIframe?.contentWindow) return;
     youtubeIframe.contentWindow.postMessage(
       JSON.stringify({ event: "command", func, args }),
-      youtubePostMessageTarget()
+      "*"
     );
   }
 
@@ -1066,8 +979,9 @@
   }
 
   function pauseYoutube() {
-    youtubeCommand("pauseVideo");
+    if (sectionPlaySession) youtubeCommand("pauseVideo");
     clearSectionStopTimer();
+    sectionPlaySession = false;
     setVideoPlaybackActive(false);
   }
 
@@ -1100,10 +1014,7 @@
     const runReady = () => {
       youtubeReady = true;
       youtubeCommand("addEventListener", ["onStateChange"]);
-      youtubeIframe.contentWindow?.postMessage(
-        '{"event":"listening"}',
-        youtubePostMessageTarget()
-      );
+      youtubeIframe.contentWindow?.postMessage('{"event":"listening"}', "*");
       onReady?.();
     };
     const current = youtubeIframe.src || "";
@@ -1131,23 +1042,7 @@
   function playCurrentSection() {
     const clip = sectionVideoForLineIndex(state.index);
     clearSectionStopTimer();
-    if (prefersYoutubeUrlSectionPlay()) {
-      youtubeReady = false;
-      const src = youtubeEmbedSrc({ clip, autoplay: true, api: true });
-      const runReady = () => {
-        youtubeReady = true;
-        youtubeCommand("addEventListener", ["onStateChange"]);
-        youtubeIframe.contentWindow?.postMessage(
-          '{"event":"listening"}',
-          youtubePostMessageTarget()
-        );
-      };
-      youtubeIframe.addEventListener("load", runReady, { once: true });
-      youtubeIframe.src = src;
-      setVideoPlaybackActive(true);
-      scheduleSectionStop(clip);
-      return;
-    }
+    sectionPlaySession = true;
     const run = () => {
       seekYoutube(clip.start);
       playYoutube();
@@ -1171,10 +1066,13 @@
       if (data.event === "onReady" || data.event === "infoDelivery") {
         youtubeReady = true;
       }
-      if (data.event === "onStateChange") {
+      if (data.event === "onStateChange" && sectionPlaySession) {
         const code = typeof data.info === "number" ? data.info : Number(data.info);
         if (code === 1) setVideoPlaybackActive(true);
-        else if (code === 0 || code === 2 || code === 5) setVideoPlaybackActive(false);
+        else if (code === 0 || code === 2 || code === 5) {
+          sectionPlaySession = false;
+          setVideoPlaybackActive(false);
+        }
       }
     });
   }
@@ -1182,16 +1080,14 @@
   function initYoutubeEmbed() {
     bindYoutubeMessages();
     lastVideoSectionLineStart = sectionStartIndex(state.index);
-    syncExternalYoutubeLink(sectionVideoForLineIndex(state.index).start);
-    /* Leave the static iframe src from markup — do not swap to enablejsapi/end on load. */
+    /* Plain iframe from markup until roses upgrades to enablejsapi (no start/end in URL). */
   }
 
   function syncVideoToProgress() {
     const secStart = sectionStartIndex(state.index);
     if (secStart === lastVideoSectionLineStart) return;
     lastVideoSectionLineStart = secStart;
-    syncExternalYoutubeLink(sectionVideoForLineIndex(state.index).start);
-    pauseYoutube();
+    if (sectionPlaySession) pauseYoutube();
   }
 
   function normalizeHistoryEntry(h) {
