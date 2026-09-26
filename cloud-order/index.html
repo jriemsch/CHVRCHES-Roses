@@ -1,0 +1,2681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Roses — cloud order</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #121212;
+    --text: rgba(255, 255, 255, 0.9);
+    --muted: rgba(255, 255, 255, 0.45);
+    --accent: #c80018;
+    --roses-icon-url: url("../assets/chvrches-roses-icon.svg");
+    font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  body * {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+  }
+  .shell {
+    width: min(100%, 520px);
+    height: 100%;
+    max-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    padding: 0.75rem 1rem max(0.65rem, env(safe-area-inset-bottom, 0));
+    gap: 0.55rem;
+  }
+  body.is-all-levels-preview .shell {
+    height: 100%;
+    max-height: 100dvh;
+  }
+  body.is-all-levels-preview .assembly-strip {
+    max-height: 10vh;
+    min-height: 2.25rem;
+  }
+  body.is-all-levels-preview .cloud-wrap {
+    flex: 1;
+    min-height: 0;
+  }
+  body.is-all-levels-preview .cloud-stage {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+  .play-hud {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.65rem 1rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .play-hud strong {
+    color: var(--text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .play-hud .countdown strong {
+    color: var(--accent);
+    font-size: 1rem;
+  }
+  .play-hud-spacer {
+    flex: 1;
+    min-width: 0.35rem;
+  }
+  .reset-labeled-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.1rem 0.2rem 0.1rem 0;
+    margin: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    flex-shrink: 0;
+  }
+  .cross-icon-wrap {
+    width: 2.1rem;
+    height: 2.1rem;
+    min-width: 2.1rem;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .cross-glyph {
+    width: 58%;
+    height: 58%;
+    display: block;
+    pointer-events: none;
+    image-rendering: pixelated;
+  }
+  .reset-label {
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .assembly-strip {
+    flex-shrink: 0;
+    min-height: 4.5rem;
+    max-height: 28vh;
+    overflow-y: auto;
+    padding: 0.55rem 0.65rem;
+    border-radius: 12px;
+    background: var(--panel);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    -webkit-overflow-scrolling: touch;
+  }
+  .assembly-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .assembly-line {
+    text-transform: uppercase;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: var(--text);
+    min-height: 1.4em;
+  }
+  .assembly-line.is-empty {
+    color: transparent;
+    user-select: none;
+  }
+  .assembly-line.is-reveal-pop {
+    animation: assembly-line-pop 0.38s cubic-bezier(0.22, 0.85, 0.32, 1);
+  }
+  @keyframes assembly-line-pop {
+    0% {
+      opacity: 0.35;
+      transform: scale(0.9);
+    }
+    55% {
+      opacity: 1;
+      transform: scale(1.04);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  body.is-play-game .assembly-strip {
+    overflow-y: hidden;
+    min-height: calc(3 * 1.4em + 2 * 0.15rem + 1.1rem);
+    max-height: calc(3 * 1.4em + 2 * 0.15rem + 1.1rem);
+  }
+  .cloud-wrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .cloud-stage {
+    position: relative;
+    flex: 1;
+    min-height: 12rem;
+    border-radius: 14px;
+    border: 1px solid rgba(200, 0, 24, 0.35);
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 40%, rgba(200, 0, 24, 0.06), transparent 70%),
+      var(--panel);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #parts-root {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+  .cloud-draw-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .cloud-draw-layer .lyric-part-anchor.is-fly-overlay {
+    z-index: 10;
+  }
+  #path-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 50;
+  }
+  .lyric-part-anchor {
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+    transition: opacity 0.48s ease, transform 0.48s ease;
+  }
+  .lyric-part-anchor.is-flying-to-assembly {
+    opacity: 1;
+    transform: translate(var(--fly-dx, 0px), var(--fly-dy, 0px)) scale(0.94);
+    transition: transform 0.52s cubic-bezier(0.22, 0.85, 0.32, 1), opacity 0.52s ease;
+  }
+  .lyric-part-anchor.is-flying-to-assembly.is-fly-run {
+    opacity: 0;
+  }
+  .lyric-part-anchor.is-picked-wrong {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  .lyric-part-anchor.is-spawn-in {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  .lyric-part-anchor.is-spawn-in.is-spawn-visible {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .lyric-part-anchor.is-fly-overlay {
+    position: fixed;
+    margin: 0;
+  }
+  .cloud-stage.is-drawing {
+    cursor: none;
+  }
+  .lyric-block {
+    position: relative;
+    background: #000000;
+  }
+  .lyric-block.is-tight {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+  .lyric-grid {
+    display: grid;
+    gap: 0;
+    margin: 0;
+    font-family: "SF Mono", ui-monospace, Menlo, Monaco, "Courier New", monospace;
+    font-weight: 500;
+    line-height: 1;
+    user-select: none;
+    letter-spacing: 0;
+  }
+  .grid-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+  }
+  .grid-cell.is-pad {
+    color: transparent;
+    text-shadow: none;
+  }
+  .grid-cell.has-cross .cross-glyph {
+    width: 48%;
+    height: 48%;
+    object-fit: contain;
+    display: block;
+    pointer-events: none;
+    opacity: 0.92;
+    filter: brightness(2.4) grayscale(1) drop-shadow(0 0 6px rgba(255, 255, 255, 0.22));
+  }
+  .rose-handle {
+    position: absolute;
+    z-index: 51;
+    width: 2.35rem;
+    height: 2.35rem;
+    margin: -1.175rem 0 0 -1.175rem;
+    border-radius: 50%;
+    border: 1px solid rgba(200, 0, 24, 0.5);
+    background: rgba(200, 0, 24, 0.18);
+    box-shadow: 0 0 16px rgba(255, 0, 0, 0.28);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .rose-handle .rose-glyph {
+    width: 62%;
+    height: 62%;
+    display: block;
+    background-color: rgba(255, 255, 255, 0.92);
+    -webkit-mask: var(--roses-icon-url) center / contain no-repeat;
+    mask: var(--roses-icon-url) center / contain no-repeat;
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.2));
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="play-hud" aria-label="Game HUD">
+    <span>Score <strong id="score-value">300</strong></span>
+    <span class="countdown"><strong id="countdown-value">7.3</strong>s</span>
+    <span>Line <strong id="progress-value">4</strong> / <strong id="progress-total">16</strong></span>
+    <span class="play-hud-spacer" aria-hidden="true"></span>
+    <button type="button" class="reset-labeled-btn" id="reset-btn" aria-label="Restart">
+      <span class="cross-icon-wrap" aria-hidden="true">
+        <img class="cross-glyph" src="../chvrches-crosses/cross-4-normalized.png" width="24" height="24" alt="" />
+      </span>
+      <span class="reset-label">Restart</span>
+    </button>
+  </header>
+
+  <section class="assembly-strip" aria-label="Assembled lyrics">
+    <div class="assembly-lines" id="assembly-lines"></div>
+  </section>
+
+  <div class="cloud-wrap">
+    <div class="cloud-stage" id="cloud-stage" aria-label="Lyric cloud playfield">
+      <div id="parts-root"></div>
+      <div class="cloud-draw-layer" id="cloud-draw-layer" aria-hidden="true">
+        <canvas id="path-layer"></canvas>
+        <div class="rose-handle" id="rose-handle" aria-hidden="true">
+          <span class="rose-glyph"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  if (location.hostname === "127.0.0.1") {
+    const url = new URL(location.href);
+    url.hostname = "localhost";
+    location.replace(url.toString());
+  }
+
+  /** Design walkthrough strip; empty when `PLAY_GAME` is true. */
+  const ASSEMBLED_DESIGN = [
+    "On the edge of a city in a slow dive",
+    "Or so say you, so say you",
+    "Crosshairs in the center of a skyline",
+    "Waiting for the right time",
+    "Freezing up like a rabbit in the headlights",
+    "Oh, what to do? What to do?",
+    "I don't think I can see it as a good sign",
+    "If all of it repeats and rhymes",
+    "Ringa ringa roses",
+    "Oh, we all fall to the ground",
+    "Every circle closes",
+    "For a penny, for a pound",
+    "All these things for God and for king",
+    "We all keep going round",
+    "Ringa ringa roses",
+    "Oh, we all fall to the ground",
+    "Line them up, take aim. Who you gonna blame?",
+    "Imagine that, oh, imagine that",
+    "Shit-scared of the horrors in your own brain",
+    "Swimming pools of acid rain",
+    "Fill a glass with delusions of the good days",
+    "Of blood and wine, of pearls for swine",
+    "Never sure if you're paranoid or entertained",
+    "Weighing up the pain and gain",
+    "Oh, don't you feel ashamed?",
+    "A woman is a woman even if you want her dead",
+    "Siphoning the bodies as a way to get ahead",
+    "Finding hidden meaning inside everything you read",
+    "Driving yourself crazy over who is in whose bed",
+    "Stiff upper lip, shooting from the hip",
+    "Running like a rat afraid of sinking with the ship",
+    "Are you being fed?",
+    "Are you ready yet?",
+    "Doesn't fucking matter",
+    "On your marks, get set",
+    "Here lies the legacy, the body, the head and the heart",
+    "And if I may command your undivided attention",
+    "Now we can start",
+    "Start",
+  ];
+  const PLAY_GAME = true;
+  document.body.classList.toggle("is-play-game", PLAY_GAME);
+  const SONG_LINE_COUNT = 59;
+  const ASSEMBLED = PLAY_GAME ? [] : ASSEMBLED_DESIGN;
+  /**
+   * Per-line split hierarchy — level key = game difficulty 1–5 (not part count).
+   * Box design: tight frame around letter grid (see exp-lyrics-cloud-order-game).
+   */
+  const LINE_BOX_HIERARCHY = [
+    {
+      lineIndex: 0,
+      full: "On the edge of a city in a slow dive",
+      levels: {
+        1: ["On the edge of a city in a slow dive"],
+        2: ["On the edge of a city", "in a slow dive"],
+        3: ["On the edge", "of a city", "in a slow dive"],
+        4: ["On the edge", "of a city", "in a", "slow dive"],
+        5: [
+          "On",
+          "the",
+          "edge",
+          "of",
+          "a",
+          "city",
+          "in",
+          "a",
+          "slow",
+          "dive",
+        ],
+      },
+    },
+    {
+      lineIndex: 1,
+      full: "Or so say you, so say you",
+      levels: {
+        1: ["Or so say you, so say you"],
+        2: ["Or so say you,", "so say you"],
+        3: ["Or so", "say you,", "so say you"],
+        4: ["Or so", "say you,", "so", "say you"],
+        5: ["Or", "so", "say", "you,", "so", "say", "you"],
+      },
+    },
+    {
+      lineIndex: 2,
+      full: "Crosshairs in the center of a skyline",
+      levels: {
+        1: ["Crosshairs in the center of a skyline"],
+        2: ["Crosshairs in the center", "of a skyline"],
+        3: ["Crosshairs", "in the center", "of a skyline"],
+        4: ["Crosshairs", "in the center", "of a", "skyline"],
+        5: [
+          "Crosshairs",
+          "in",
+          "the",
+          "center",
+          "of",
+          "a",
+          "skyline",
+        ],
+      },
+    },
+    {
+      lineIndex: 3,
+      full: "Waiting for the right time",
+      levels: {
+        1: ["Waiting for the right time"],
+        2: ["Waiting for the", "right time"],
+        3: ["Waiting", "for the", "right time"],
+        4: ["Waiting", "for the", "right", "time"],
+        5: ["Waiting", "for", "the", "right", "time"],
+      },
+    },
+    {
+      lineIndex: 4,
+      full: "Freezing up like a rabbit in the headlights",
+      levels: {
+        1: ["Freezing up like a rabbit in the headlights"],
+        2: ["Freezing up like a rabbit", "in the headlights"],
+        3: ["Freezing", "up like a rabbit", "in the headlights"],
+        4: ["Freezing", "up like a rabbit", "in the", "headlights"],
+        5: [
+          "Freezing",
+          "up",
+          "like",
+          "a",
+          "rabbit",
+          "in",
+          "the",
+          "headlights",
+        ],
+      },
+    },
+    {
+      lineIndex: 5,
+      full: "Oh, what to do? What to do?",
+      levels: {
+        1: ["Oh, what to do? What to do?"],
+        2: ["Oh, what to do?", "What to do?"],
+        3: ["Oh,", "what to do?", "What to do?"],
+        4: ["Oh,", "what to do?", "What", "to do?"],
+        5: ["Oh,", "what", "to", "do?", "What", "to", "do?"],
+      },
+    },
+    {
+      lineIndex: 6,
+      full: "I don't think I can see it as a good sign",
+      levels: {
+        1: ["I don't think I can see it as a good sign"],
+        2: ["I don't think I can", "see it as a good sign"],
+        3: ["I don't think", "I can see it", "as a good sign"],
+        4: ["I don't think", "I can", "see it", "as a good sign"],
+        5: [
+          "I",
+          "don't",
+          "think",
+          "I",
+          "can",
+          "see",
+          "it",
+          "as",
+          "a",
+          "good",
+          "sign",
+        ],
+      },
+    },
+    {
+      lineIndex: 7,
+      full: "If all of it repeats and rhymes",
+      levels: {
+        1: ["If all of it repeats and rhymes"],
+        2: ["If all of it repeats", "and rhymes"],
+        3: ["If all of it", "repeats", "and rhymes"],
+        4: ["If all", "of it", "repeats", "and rhymes"],
+        5: ["If", "all", "of", "it", "repeats", "and", "rhymes"],
+      },
+    },
+    {
+      lineIndex: 8,
+      full: "Ringa ringa roses",
+      levels: {
+        1: ["Ringa ringa roses"],
+        2: ["Ringa ringa", "roses"],
+        3: ["Ringa ringa", "roses"],
+        4: ["Ringa", "ringa", "roses"],
+        5: ["Ringa", "ringa", "roses"],
+      },
+    },
+    {
+      lineIndex: 9,
+      full: "Oh, we all fall to the ground",
+      levels: {
+        1: ["Oh, we all fall to the ground"],
+        2: ["Oh, we all fall", "to the ground"],
+        3: ["Oh, we", "all fall", "to the ground"],
+        4: ["Oh, we", "all fall", "to the", "ground"],
+        5: ["Oh,", "we", "all", "fall", "to", "the", "ground"],
+      },
+    },
+    {
+      lineIndex: 10,
+      full: "Every circle closes",
+      levels: {
+        1: ["Every circle closes"],
+        2: ["Every circle", "closes"],
+        3: ["Every circle", "closes"],
+        4: ["Every", "circle", "closes"],
+        5: ["Every", "circle", "closes"],
+      },
+    },
+    {
+      lineIndex: 11,
+      full: "For a penny, for a pound",
+      levels: {
+        1: ["For a penny, for a pound"],
+        2: ["For a penny,", "for a pound"],
+        3: ["For a", "penny,", "for a pound"],
+        4: ["For a", "penny,", "for a", "pound"],
+        5: ["For", "a", "penny,", "for", "a", "pound"],
+      },
+    },
+    {
+      lineIndex: 12,
+      full: "All these things for God and for king",
+      levels: {
+        1: ["All these things for God and for king"],
+        2: ["All these things for", "God and for king"],
+        3: ["All these things", "for", "God and for king"],
+        4: ["All these", "things", "for", "God and for king"],
+        5: [
+          "All",
+          "these",
+          "things",
+          "for",
+          "God",
+          "and",
+          "for",
+          "king",
+        ],
+      },
+    },
+    {
+      lineIndex: 13,
+      full: "We all keep going round",
+      levels: {
+        1: ["We all keep going round"],
+        2: ["We all keep", "going round"],
+        3: ["We", "all keep", "going round"],
+        4: ["We", "all keep", "going", "round"],
+        5: ["We", "all", "keep", "going", "round"],
+      },
+    },
+    {
+      lineIndex: 14,
+      full: "Ringa ringa roses",
+      levels: {
+        1: ["Ringa ringa roses"],
+        2: ["Ringa ringa", "roses"],
+        3: ["Ringa ringa", "roses"],
+        4: ["Ringa", "ringa", "roses"],
+        5: ["Ringa", "ringa", "roses"],
+      },
+    },
+    {
+      lineIndex: 15,
+      full: "Oh, we all fall to the ground",
+      levels: {
+        1: ["Oh, we all fall to the ground"],
+        2: ["Oh, we all fall", "to the ground"],
+        3: ["Oh, we", "all fall", "to the ground"],
+        4: ["Oh, we", "all fall", "to the", "ground"],
+        5: ["Oh,", "we", "all", "fall", "to", "the", "ground"],
+      },
+    },
+    {
+      lineIndex: 16,
+      full: "Line them up, take aim. Who you gonna blame?",
+      levels: {
+        1: ["Line them up, take aim. Who you gonna blame?"],
+        2: ["Line them up, take aim.", "Who you gonna blame?"],
+        3: ["Line them up,", "take aim.", "Who you gonna blame?"],
+        4: ["Line them up,", "take aim.", "Who you", "gonna blame?"],
+        5: [
+          "Line",
+          "them",
+          "up,",
+          "take",
+          "aim.",
+          "Who",
+          "you",
+          "gonna",
+          "blame?",
+        ],
+      },
+    },
+    {
+      lineIndex: 17,
+      full: "Imagine that, oh, imagine that",
+      levels: {
+        1: ["Imagine that, oh, imagine that"],
+        2: ["Imagine that,", "oh, imagine that"],
+        3: ["Imagine that,", "oh, imagine that"],
+        4: ["Imagine that,", "oh,", "imagine that"],
+        5: ["Imagine", "that,", "oh,", "imagine", "that"],
+      },
+    },
+    {
+      lineIndex: 18,
+      full: "Shit-scared of the horrors in your own brain",
+      levels: {
+        1: ["Shit-scared of the horrors in your own brain"],
+        2: ["Shit-scared of the horrors", "in your own brain"],
+        3: ["Shit-scared", "of the horrors", "in your own brain"],
+        4: ["Shit-scared", "of the horrors", "in your", "own brain"],
+        5: [
+          "Shit-scared",
+          "of",
+          "the",
+          "horrors",
+          "in",
+          "your",
+          "own",
+          "brain",
+        ],
+      },
+    },
+    {
+      lineIndex: 19,
+      full: "Swimming pools of acid rain",
+      levels: {
+        1: ["Swimming pools of acid rain"],
+        2: ["Swimming pools of", "acid rain"],
+        3: ["Swimming", "pools of", "acid rain"],
+        4: ["Swimming", "pools of", "acid", "rain"],
+        5: ["Swimming", "pools", "of", "acid", "rain"],
+      },
+    },
+    {
+      lineIndex: 20,
+      full: "Fill a glass with delusions of the good days",
+      levels: {
+        1: ["Fill a glass with delusions of the good days"],
+        2: ["Fill a glass with delusions", "of the good days"],
+        3: ["Fill a glass", "with delusions", "of the good days"],
+        4: ["Fill a glass", "with delusions", "of the", "good days"],
+        5: [
+          "Fill",
+          "a",
+          "glass",
+          "with",
+          "delusions",
+          "of",
+          "the",
+          "good",
+          "days",
+        ],
+      },
+    },
+    {
+      lineIndex: 21,
+      full: "Of blood and wine, of pearls for swine",
+      levels: {
+        1: ["Of blood and wine, of pearls for swine"],
+        2: ["Of blood and wine,", "of pearls for swine"],
+        3: ["Of blood", "and wine,", "of pearls for swine"],
+        4: ["Of blood", "and wine,", "of pearls", "for swine"],
+        5: [
+          "Of",
+          "blood",
+          "and",
+          "wine,",
+          "of",
+          "pearls",
+          "for",
+          "swine",
+        ],
+      },
+    },
+    {
+      lineIndex: 22,
+      full: "Never sure if you're paranoid or entertained",
+      levels: {
+        1: ["Never sure if you're paranoid or entertained"],
+        2: ["Never sure if you're paranoid", "or entertained"],
+        3: ["Never sure if you're", "paranoid", "or entertained"],
+        4: ["Never sure", "if you're", "paranoid", "or entertained"],
+        5: [
+          "Never",
+          "sure",
+          "if",
+          "you're",
+          "paranoid",
+          "or",
+          "entertained",
+        ],
+      },
+    },
+    {
+      lineIndex: 23,
+      full: "Weighing up the pain and gain",
+      levels: {
+        1: ["Weighing up the pain and gain"],
+        2: ["Weighing up the pain", "and gain"],
+        3: ["Weighing up the", "pain", "and gain"],
+        4: ["Weighing up", "the", "pain", "and gain"],
+        5: ["Weighing", "up", "the", "pain", "and", "gain"],
+      },
+    },
+    {
+      lineIndex: 24,
+      full: "Oh, don't you feel ashamed?",
+      levels: {
+        1: ["Oh, don't you feel ashamed?"],
+        2: ["Oh, don't you", "feel ashamed?"],
+        3: ["Oh,", "don't you", "feel ashamed?"],
+        4: ["Oh,", "don't you", "feel", "ashamed?"],
+        5: ["Oh,", "don't", "you", "feel", "ashamed?"],
+      },
+    },
+    {
+      lineIndex: 25,
+      full: "A woman is a woman even if you want her dead",
+      levels: {
+        1: ["A woman is a woman even if you want her dead"],
+        2: ["A woman is a woman", "even if you want her dead"],
+        3: ["A woman is", "a woman even if", "you want her dead"],
+        4: ["A woman is", "a woman", "even if", "you want her dead"],
+        5: [
+          "A",
+          "woman",
+          "is",
+          "a",
+          "woman",
+          "even",
+          "if",
+          "you",
+          "want",
+          "her",
+          "dead",
+        ],
+      },
+    },
+    {
+      lineIndex: 26,
+      full: "Siphoning the bodies as a way to get ahead",
+      levels: {
+        1: ["Siphoning the bodies as a way to get ahead"],
+        2: ["Siphoning the bodies", "as a way to get ahead"],
+        3: ["Siphoning the", "bodies", "as a way to get ahead"],
+        4: ["Siphoning the", "bodies", "as a way", "to get ahead"],
+        5: [
+          "Siphoning",
+          "the",
+          "bodies",
+          "as",
+          "a",
+          "way",
+          "to",
+          "get",
+          "ahead",
+        ],
+      },
+    },
+    {
+      lineIndex: 27,
+      full: "Finding hidden meaning inside everything you read",
+      levels: {
+        1: ["Finding hidden meaning inside everything you read"],
+        2: ["Finding hidden meaning inside", "everything you read"],
+        3: ["Finding", "hidden meaning inside", "everything you read"],
+        4: ["Finding", "hidden meaning inside", "everything", "you read"],
+        5: [
+          "Finding",
+          "hidden",
+          "meaning",
+          "inside",
+          "everything",
+          "you",
+          "read",
+        ],
+      },
+    },
+    {
+      lineIndex: 28,
+      full: "Driving yourself crazy over who is in whose bed",
+      levels: {
+        1: ["Driving yourself crazy over who is in whose bed"],
+        2: ["Driving yourself crazy", "over who is in whose bed"],
+        3: ["Driving yourself", "crazy", "over who is in whose bed"],
+        4: ["Driving yourself", "crazy", "over who is", "in whose bed"],
+        5: [
+          "Driving",
+          "yourself",
+          "crazy",
+          "over",
+          "who",
+          "is",
+          "in",
+          "whose",
+          "bed",
+        ],
+      },
+    },
+    {
+      lineIndex: 29,
+      full: "Stiff upper lip, shooting from the hip",
+      levels: {
+        1: ["Stiff upper lip, shooting from the hip"],
+        2: ["Stiff upper lip,", "shooting from the hip"],
+        3: ["Stiff upper", "lip,", "shooting from the hip"],
+        4: ["Stiff upper", "lip,", "shooting from", "the hip"],
+        5: [
+          "Stiff",
+          "upper",
+          "lip,",
+          "shooting",
+          "from",
+          "the",
+          "hip",
+        ],
+      },
+    },
+    {
+      lineIndex: 30,
+      full: "Running like a rat afraid of sinking with the ship",
+      levels: {
+        1: ["Running like a rat afraid of sinking with the ship"],
+        2: ["Running like a rat afraid of", "sinking with the ship"],
+        3: ["Running like a", "rat afraid of", "sinking with the ship"],
+        4: ["Running like a", "rat afraid of", "sinking with", "the ship"],
+        5: [
+          "Running",
+          "like",
+          "a",
+          "rat",
+          "afraid",
+          "of",
+          "sinking",
+          "with",
+          "the",
+          "ship",
+        ],
+      },
+    },
+    {
+      lineIndex: 31,
+      full: "Are you being fed?",
+      levels: {
+        1: ["Are you being fed?"],
+        2: ["Are you", "being fed?"],
+        3: ["Are", "you", "being fed?"],
+        4: ["Are", "you", "being", "fed?"],
+        5: ["Are", "you", "being", "fed?"],
+      },
+    },
+    {
+      lineIndex: 32,
+      full: "Are you ready yet?",
+      levels: {
+        1: ["Are you ready yet?"],
+        2: ["Are you", "ready yet?"],
+        3: ["Are", "you", "ready yet?"],
+        4: ["Are", "you", "ready", "yet?"],
+        5: ["Are", "you", "ready", "yet?"],
+      },
+    },
+    {
+      lineIndex: 33,
+      full: "Doesn't fucking matter",
+      levels: {
+        1: ["Doesn't fucking matter"],
+        2: ["Doesn't fucking", "matter"],
+        3: ["Doesn't fucking", "matter"],
+        4: ["Doesn't", "fucking", "matter"],
+        5: ["Doesn't", "fucking", "matter"],
+      },
+    },
+    {
+      lineIndex: 34,
+      full: "On your marks, get set",
+      levels: {
+        1: ["On your marks, get set"],
+        2: ["On your marks,", "get set"],
+        3: ["On", "your marks,", "get set"],
+        4: ["On", "your marks,", "get", "set"],
+        5: ["On", "your", "marks,", "get", "set"],
+      },
+    },
+    {
+      lineIndex: 50,
+      full: "Here lies the legacy, the body, the head and the heart",
+      levels: {
+        1: ["Here lies the legacy, the body, the head and the heart"],
+        2: ["Here lies the legacy, the", "body, the head and the heart"],
+        3: [
+          "Here lies the",
+          "legacy, the body, the",
+          "head and the heart",
+        ],
+        4: [
+          "Here lies the",
+          "legacy, the",
+          "body, the",
+          "head and the heart",
+        ],
+        5: [
+          "Here",
+          "lies",
+          "the",
+          "legacy,",
+          "the",
+          "body,",
+          "the",
+          "head",
+          "and",
+          "the",
+          "heart",
+        ],
+      },
+    },
+    {
+      lineIndex: 54,
+      full: "And if I may command your undivided attention",
+      levels: {
+        1: ["And if I may command your undivided attention"],
+        2: ["And if I may command", "your undivided attention"],
+        3: ["And", "if I may command", "your undivided attention"],
+        4: ["And", "if I may command", "your undivided", "attention"],
+        5: [
+          "And",
+          "if",
+          "I",
+          "may",
+          "command",
+          "your",
+          "undivided",
+          "attention",
+        ],
+      },
+    },
+    {
+      lineIndex: 55,
+      full: "Now we can start",
+      levels: {
+        1: ["Now we can start"],
+        2: ["Now we", "can start"],
+        3: ["Now", "we", "can start"],
+        4: ["Now", "we", "can", "start"],
+        5: ["Now", "we", "can", "start"],
+      },
+    },
+    {
+      lineIndex: 56,
+      full: "Start",
+      levels: {
+        1: ["Start"],
+        2: ["Start"],
+        3: ["Start"],
+        4: ["Start"],
+        5: ["Start"],
+      },
+    },
+  ];
+  const ACTIVE_GAME_LEVEL = 1;
+  /** Stack every defined level for the active line (horz parts, vert levels). */
+  const ALL_LEVELS_PREVIEW = !PLAY_GAME;
+  let gameExpectedLineIndex = 0;
+  const CLOUD_DECOY_COUNT = 5;
+  /** Simultaneous boxes on the playfield (target + decoys); level 1 stays sparse. */
+  const CLOUD_MAX_BOXES_BY_LEVEL = { 1: 4 };
+  function cloudMaxBoxes() {
+    return CLOUD_MAX_BOXES_BY_LEVEL[ACTIVE_GAME_LEVEL] ?? 1 + CLOUD_DECOY_COUNT;
+  }
+  function initialCloudDecoyCount() {
+    return Math.max(0, cloudMaxBoxes() - 1);
+  }
+  function canSpawnCloudReplacement() {
+    return cloudParts.length < cloudMaxBoxes();
+  }
+  /** Max square side for a single cloud box vs playfield short edge. */
+  const CLOUD_MAX_BLOCK_SIDE_FRACTION = 0.42;
+  /** Letter scale inside cloud boxes (design preview uses `LYRIC_PART_SCALE`). */
+  const CLOUD_LYRIC_PART_SCALE = 0.88 * 0.7;
+  const CLOUD_LAYOUT_GAP = 12;
+  const CLOUD_LAYOUT_PAD = 10;
+  const CLOUD_PLACE_ATTEMPTS = 140;
+  function activeLineEntry() {
+    if (PLAY_GAME) {
+      return (
+        LINE_BOX_HIERARCHY.find((e) => e.lineIndex === gameExpectedLineIndex) ||
+        LINE_BOX_HIERARCHY[0]
+      );
+    }
+    return LINE_BOX_HIERARCHY[38];
+  }
+  function expectedPartText() {
+    const parts = activeLineEntry().levels[ACTIVE_GAME_LEVEL];
+    return parts?.[0] ?? "";
+  }
+  const DISPLAY_PARTS = () => activeLineEntry().levels[ACTIVE_GAME_LEVEL];
+  const LYRIC_PART_SCALE = 0.5;
+  /** Linear size vs stage short side; doubled from initial 0.52 (clamped so the box stays on stage). */
+  const SQUARE_STAGE_FRACTION = 0.52 * 2;
+
+  const assemblyEl = document.getElementById("assembly-lines");
+  const scoreEl = document.getElementById("score-value");
+  const countdownEl = document.getElementById("countdown-value");
+  const progressEl = document.getElementById("progress-value");
+  const progressTotalEl = document.getElementById("progress-total");
+
+  let sessionScore = 0;
+  let countdownRemaining = 10.0;
+  let countdownTimer = null;
+
+  const gameAssembledLines = [];
+  const ASSEMBLY_SLOT_COUNT = 3;
+
+  function renderAssembly() {
+    assemblyEl.innerHTML = "";
+    if (PLAY_GAME) {
+      const recent = gameAssembledLines.slice(-ASSEMBLY_SLOT_COUNT);
+      const padCount = ASSEMBLY_SLOT_COUNT - recent.length;
+      const slots = [...Array(padCount).fill(""), ...recent];
+      slots.forEach((line) => {
+        const el = document.createElement("div");
+        el.className = "assembly-line" + (line ? "" : " is-empty");
+        el.textContent = line || "\u00a0";
+        assemblyEl.appendChild(el);
+      });
+      return;
+    }
+    ASSEMBLED.forEach((line) => {
+      const el = document.createElement("div");
+      el.className = "assembly-line";
+      el.textContent = line;
+      assemblyEl.appendChild(el);
+    });
+  }
+
+  function updateHud() {
+    scoreEl.textContent = String(sessionScore);
+    countdownEl.textContent = countdownRemaining.toFixed(1);
+    const progress = PLAY_GAME ? gameAssembledLines.length + 1 : 4;
+    const total = PLAY_GAME ? SONG_LINE_COUNT : 16;
+    progressEl.textContent = String(progress);
+    progressTotalEl.textContent = String(total);
+  }
+
+  renderAssembly();
+  updateHud();
+
+  const stage = document.getElementById("cloud-stage");
+  const partsRoot = document.getElementById("parts-root");
+  const drawLayer = document.getElementById("cloud-draw-layer");
+  const rose = document.getElementById("rose-handle");
+  const canvas = document.getElementById("path-layer");
+  const ctx = canvas.getContext("2d");
+
+  function displayChar(ch) {
+    if (ch === " ") return " ";
+    const map = { "\u2019": "'", "\u2018": "'", "\u201c": '"', "\u201d": '"' };
+    const c = map[ch] || ch;
+    return c.toUpperCase();
+  }
+
+  function wordsFromLine(text) {
+    return text.trim().split(/\s+/).filter(Boolean);
+  }
+
+  /** Lowercase alpha key → lowercase segment strings (must partition the word’s letters). */
+  const INTRA_WORD_ROW_BREAKS = {
+    crosshairs: ["cross", "hairs"],
+    skyline: ["sky", "line"],
+    waiting: ["wait", "ing"],
+    headlights: ["head", "lights"],
+    freezing: ["freez", "ing"],
+    shitscared: ["shit-", "scared"],
+    swimming: ["swim", "ming"],
+    entertained: ["enter", "tained"],
+    weighing: ["weigh", "ing"],
+    siphoning: ["siphon", "ing"],
+    everything: ["every", "thing"],
+  };
+
+  /** Some intra-word breaks apply only from a minimum game level (e.g. line 4 `Waiting`). */
+  const INTRA_WORD_MIN_GAME_LEVEL = {
+    waiting: 2,
+    everything: 2,
+  };
+
+  /** Intra-word break applies only when that token is the sole word in the lyric part (e.g. line 5 `Freezing`). */
+  const INTRA_WORD_SOLO_PART_ONLY = {
+    freezing: true,
+  };
+
+  /** 0-based word index after which the next word starts on a new row (per part text; optional per game level). */
+  const INTER_WORD_FORCE_ROW_AFTER = {
+    "Line them up, take aim. Who you gonna blame?": { 1: [0, 2, 4, 6, 7] },
+    "Of blood and wine, of pearls for swine": { 1: [1, 3, 5] },
+    "see it as a good sign": { 2: [1, 3, 4] },
+    "even if you want her dead": { 2: [1, 3, 4] },
+    "if all of it": { 3: [1] },
+    "and rhymes": { 4: [0] },
+    "Never sure if you're": { 3: [1] },
+    "or entertained": { 4: [0] },
+    "Weighing up the": { 3: [1] },
+    "and gain": { 4: [0] },
+    "Oh, don't you feel ashamed?": { 1: [0] },
+    "Oh, we": { 3: [0], 4: [0] },
+    "Here lies the legacy, the body, the head and the heart": { 1: [1, 2, 3, 5, 7, 8] },
+    "body, the head and the heart": { 2: [1, 3, 4] },
+  };
+
+  /** Minimum grid width so forced inter-word rows pack as designed (per part text; optional per game level). */
+  const INTER_WORD_MIN_COLS = {
+    "Of blood and wine, of pearls for swine": { 1: 9 },
+    "see it as a good sign": { 2: 6 },
+    "even if you want her dead": { 2: 6 },
+    "if all of it": { 3: 6 },
+    "Never sure if you're": { 3: 6 },
+    "Weighing up the": { 3: 6 },
+    "Oh, don't you feel ashamed?": { 1: 9 },
+    "Here lies the legacy, the body, the head and the heart": { 1: 9 },
+    "body, the head and the heart": { 2: 6 },
+  };
+
+  function interWordForceRowAfter(text, gameLevel = 1) {
+    const spec = INTER_WORD_FORCE_ROW_AFTER[text.trim()];
+    if (!spec) return [];
+    if (Array.isArray(spec)) return spec;
+    return spec[gameLevel] ?? spec.default ?? [];
+  }
+
+  function interWordMinCols(text, gameLevel = 1) {
+    const spec = INTER_WORD_MIN_COLS[text.trim()];
+    if (!spec) return 0;
+    if (typeof spec === "number") return spec;
+    return spec[gameLevel] ?? spec.default ?? 0;
+  }
+
+  function normalizeWordKey(word) {
+    return word.replace(/[^a-zA-Z]/g, "").toLowerCase();
+  }
+
+  function wordSegments(word, gameLevel = 1, opts = {}) {
+    const { soloPart = false } = opts;
+    const key = normalizeWordKey(word);
+    const minLv = INTRA_WORD_MIN_GAME_LEVEL[key];
+    if (minLv != null && gameLevel < minLv) return [word];
+    if (INTRA_WORD_SOLO_PART_ONLY[key] && !soloPart) return [word];
+    const spec = INTRA_WORD_ROW_BREAKS[key];
+    if (!spec) return [word];
+    const leadLen = (word.match(/^[^a-zA-Z]*/) || [""])[0].length;
+    const trailLen = (word.match(/[^a-zA-Z]*$/) || [""])[0].length;
+    const lead = word.slice(0, leadLen);
+    const trail = word.slice(word.length - trailLen);
+    const alpha = word.slice(leadLen, word.length - trailLen);
+    let idx = 0;
+    const out = [];
+    for (let i = 0; i < spec.length; i++) {
+      const part = spec[i];
+      const slice = alpha.slice(idx, idx + part.length);
+      if (slice.toLowerCase() !== part) return [word];
+      out.push((i === 0 ? lead : "") + slice + (i === spec.length - 1 ? trail : ""));
+      idx += part.length;
+    }
+    if (idx !== alpha.length) return [word];
+    return out;
+  }
+
+  function longestWordLength(text, gameLevel = 1) {
+    const words = wordsFromLine(text);
+    const soloPart = words.length === 1;
+    let max = 0;
+    for (const w of words) {
+      for (const seg of wordSegments(w, gameLevel, { soloPart })) max = Math.max(max, seg.length);
+    }
+    return max;
+  }
+
+  function isOptionalRowEndChar(ch) {
+    return (
+      ch === " " ||
+      ch === "," ||
+      ch === "." ||
+      ch === ";" ||
+      ch === ":" ||
+      ch === "!" ||
+      ch === "?" ||
+      ch === "'" ||
+      ch === '"' ||
+      ch === "\u2019" ||
+      ch === "\u2018" ||
+      ch === "\u201c" ||
+      ch === "\u201d"
+    );
+  }
+
+  function rowEffectiveLen(row) {
+    let end = row.length;
+    while (end > 0 && isOptionalRowEndChar(row[end - 1])) end--;
+    return end;
+  }
+
+  function letterCountInRow(row) {
+    let n = 0;
+    for (let i = 0; i < rowEffectiveLen(row); i++) if (row[i] !== " ") n++;
+    return n;
+  }
+
+  function columnIsAllOptional(rowArrays, colIndex) {
+    for (const row of rowArrays) {
+      if (colIndex >= row.length) continue;
+      const ch = row[colIndex];
+      if (!isOptionalRowEndChar(ch)) return false;
+    }
+    return true;
+  }
+
+  function trimOptionalTrailingColumns(layout) {
+    let { rowArrays, cols, rows } = layout;
+    while (cols > 1 && columnIsAllOptional(rowArrays, cols - 1)) {
+      cols -= 1;
+      rowArrays = rowArrays.map((row) => row.slice(0, cols));
+    }
+    const chars = rowArrays.flat();
+    return { chars, rows: rowArrays.length, cols, rowArrays };
+  }
+
+  function layoutWordWrap(text, cols, gameLevel = 1, forceRowAfterWord = []) {
+    const words = wordsFromLine(text);
+    const soloPart = words.length === 1;
+    const rowArrays = [];
+    let row = [];
+
+    function rowUsedLen() {
+      return rowEffectiveLen(row);
+    }
+
+    function pushRow() {
+      const padded = row.slice();
+      while (padded.length < cols) padded.push(" ");
+      rowArrays.push(padded);
+      row = [];
+    }
+
+    function placeToken(token, allowLeadingSpace) {
+      const wLen = token.length;
+      if (wLen > cols) {
+        if (rowUsedLen() > 0) pushRow();
+        for (let i = 0; i < wLen; i++) {
+          row.push(token[i]);
+          if (row.length >= cols) pushRow();
+        }
+        return;
+      }
+      const used = rowUsedLen();
+      const gap = allowLeadingSpace && used > 0 ? 1 : 0;
+      if (used + gap + wLen <= cols) {
+        if (gap) row.push(" ");
+        for (const ch of token) row.push(ch);
+      } else {
+        pushRow();
+        for (const ch of token) row.push(ch);
+      }
+    }
+
+    for (let wi = 0; wi < words.length; wi++) {
+      const word = words[wi];
+      const segments = wordSegments(word, gameLevel, { soloPart });
+      for (let si = 0; si < segments.length; si++) {
+        if (si > 0) {
+          if (rowUsedLen() > 0) pushRow();
+        }
+        placeToken(segments[si], si === 0);
+      }
+      if (forceRowAfterWord.includes(wi) && rowUsedLen() > 0) pushRow();
+    }
+    if (rowUsedLen() > 0 || rowArrays.length === 0) pushRow();
+
+    return trimOptionalTrailingColumns({
+      chars: rowArrays.flat(),
+      rows: rowArrays.length,
+      cols,
+      rowArrays,
+    });
+  }
+
+  function layoutRowEndWaste(cols, rowArrays) {
+    let waste = 0;
+    for (const row of rowArrays) {
+      waste += cols - rowEffectiveLen(row);
+    }
+    return waste;
+  }
+
+  function colsForLine(text, gameLevel = 1, forceRowAfterWord = []) {
+    const raw = text.trim();
+    const n = raw.length;
+    const longest = longestWordLength(raw, gameLevel);
+    const sqrtCols = Math.ceil(Math.sqrt(n * 1.12));
+    if (n <= 8) return Math.max(longest, Math.min(n, sqrtCols));
+    const minC = Math.max(
+      4,
+      longest,
+      Math.floor(sqrtCols * 0.82),
+      interWordMinCols(raw, gameLevel)
+    );
+    const maxC = Math.min(12, n, Math.max(minC, Math.ceil(sqrtCols * 1.28)));
+    const wasteWeight = 0.08;
+    let best = minC;
+    let bestScore = Infinity;
+    let fallback = minC;
+    let fallbackScore = Infinity;
+    for (let c = minC; c <= maxC; c++) {
+      const layout = layoutWordWrap(raw, c, gameLevel, forceRowAfterWord);
+      const r = layout.rows;
+      const effC = layout.cols;
+      const waste = layoutRowEndWaste(effC, layout.rowArrays);
+      const aspect = Math.max(effC / r, r / effC);
+      const score =
+        waste * wasteWeight +
+        (aspect - 1) * 3.4 +
+        (c > 10 ? 0.2 : 0);
+      if (score < fallbackScore) {
+        fallbackScore = score;
+        fallback = c;
+      }
+      const lastLetters = letterCountInRow(layout.rowArrays[layout.rowArrays.length - 1]);
+      if (lastLetters <= 3) continue;
+      if (score < bestScore || (score === bestScore && c < best)) {
+        bestScore = score;
+        best = c;
+      }
+    }
+    if (bestScore < Infinity) return best;
+    for (let c = maxC; c >= minC; c--) {
+      const layout = layoutWordWrap(raw, c, gameLevel, forceRowAfterWord);
+      const lastLetters = letterCountInRow(layout.rowArrays[layout.rowArrays.length - 1]);
+      if (lastLetters > 3) return c;
+    }
+    return Math.min(n, Math.max(fallback, longest, 4));
+  }
+
+  function buildLineGrid(text, gameLevel = 1) {
+    const raw = text.trim();
+    const forceRowAfterWord = interWordForceRowAfter(raw, gameLevel);
+    const cols = colsForLine(raw, gameLevel, forceRowAfterWord);
+    return layoutWordWrap(raw, cols, gameLevel, forceRowAfterWord);
+  }
+
+  function fontPxForGrid(rows, cols, cellPx) {
+    return Math.max(7, cellPx * 0.62);
+  }
+
+  function cellPxForGrid(rows, cols, frameW, frameH) {
+    const margin = 0.14;
+    const availW = frameW * (1 - margin * 2);
+    const availH = frameH * (1 - margin * 2);
+    const cell = Math.min(availW / cols, availH / rows);
+    return Math.max(12, Math.min(cell, frameW * 0.11));
+  }
+
+  function crossSrcForCell(index) {
+    const n = (index % 4) + 1;
+    const base = `../chvrches-crosses/cross-${n}-normalized.png`;
+    return base;
+  }
+
+  function squareSideForFrame(frameW, frameH) {
+    const short = Math.min(frameW, frameH);
+    return short * Math.min(SQUARE_STAGE_FRACTION, 0.97);
+  }
+
+  const BOX_PAD_PX = 6;
+
+  function cellPxForSquareGrid(rows, cols, squareSide) {
+    const inner = squareSide;
+    const cell = Math.min(inner / cols, inner / rows);
+    return Math.max(10, cell * LYRIC_PART_SCALE);
+  }
+
+  function lineBoxMetrics(text, frameW, frameH, fixedCellPx = null, gameLevel = 1) {
+    const grid = buildLineGrid(text, gameLevel);
+    const cellPx =
+      fixedCellPx != null
+        ? fixedCellPx
+        : cellPxForSquareGrid(
+            grid.rows,
+            grid.cols,
+            squareSideForFrame(frameW, frameH)
+          );
+    const gridW = cellPx * grid.cols;
+    const gridH = cellPx * grid.rows;
+    const blockW = gridW + BOX_PAD_PX * 2;
+    const blockH = gridH + BOX_PAD_PX * 2;
+    return { ...grid, cellPx, gridW, gridH, blockW, blockH };
+  }
+
+  /** Letter scale for split levels matches the full-line (level 1) box for that lyric line. */
+  function referenceCellPxForLine(lineEntry, frameW, frameH) {
+    return lineBoxMetrics(lineEntry.full, frameW, frameH).cellPx;
+  }
+
+  /** Smallest cell px so every cloud string fits inside `CLOUD_MAX_BLOCK_SIDE_FRACTION`. */
+  function cloudReferenceCellPx(texts, frameW, frameH, gameLevel = 1) {
+    const maxSide = Math.min(frameW, frameH) * CLOUD_MAX_BLOCK_SIDE_FRACTION;
+    const inner = Math.max(24, maxSide - BOX_PAD_PX * 2);
+    let cellPx = Infinity;
+    for (const text of texts) {
+      const grid = buildLineGrid(text, gameLevel);
+      const cap = Math.min(inner / grid.cols, inner / grid.rows);
+      cellPx = Math.min(cellPx, Math.max(6, cap * CLOUD_LYRIC_PART_SCALE));
+    }
+    return cellPx === Infinity ? 8 : cellPx;
+  }
+
+  function shuffleIndices(n, seed) {
+    const order = Array.from({ length: n }, (_, i) => i);
+    for (let i = n - 1; i > 0; i--) {
+      const j = (seed + i * 7919) % (i + 1);
+      const tmp = order[i];
+      order[i] = order[j];
+      order[j] = tmp;
+    }
+    return order;
+  }
+
+  function cloudRandFactory(seed) {
+    let s = seed >>> 0;
+    return () => {
+      s = (s + 0x6d2b79f5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /** Seeded random non-overlapping positions (largest boxes placed first). */
+  function layoutCloudRandomSlots(boxes, frameW, frameH, pad, gap, seedBase) {
+    const n = boxes.length;
+    const indices = Array.from({ length: n }, (_, i) => i);
+    indices.sort((a, b) => boxes[b].blockW * boxes[b].blockH - boxes[a].blockW * boxes[a].blockH);
+    const slots = new Array(n);
+    const placed = [];
+
+    for (const bi of indices) {
+      const box = boxes[bi];
+      const maxLeft = frameW - pad - box.blockW;
+      const maxTop = frameH - pad - box.blockH;
+      if (maxLeft < pad || maxTop < pad) {
+        return { slots: null, fits: false };
+      }
+      const rng = cloudRandFactory(seedBase + bi * 1009);
+      let found = false;
+      for (let attempt = 0; attempt < CLOUD_PLACE_ATTEMPTS; attempt++) {
+        const left = pad + rng() * (maxLeft - pad);
+        const top = pad + rng() * (maxTop - pad);
+        const candidate = { left, top, blockW: box.blockW, blockH: box.blockH };
+        let ok = true;
+        for (const p of placed) {
+          if (rectsOverlap(candidate, p, gap)) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) {
+          slots[bi] = candidate;
+          placed.push(candidate);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return { slots: null, fits: false };
+      }
+    }
+    return { slots, fits: true };
+  }
+
+  function measureLyricLineBox(text, frameW, frameH, fixedCellPx, gameLevel = 1) {
+    const { blockW, blockH } = lineBoxMetrics(text, frameW, frameH, fixedCellPx, gameLevel);
+    return { blockW, blockH };
+  }
+
+  function buildLyricPartBlock(
+    text,
+    frameW,
+    frameH,
+    left,
+    top,
+    fixedCellPx,
+    gameLevel = 1,
+    partMeta = null
+  ) {
+    const { chars, rows, cols, cellPx, gridW, gridH, blockW, blockH } = lineBoxMetrics(
+      text,
+      frameW,
+      frameH,
+      fixedCellPx,
+      gameLevel
+    );
+    const anchor = document.createElement("div");
+    anchor.className = "lyric-part-anchor";
+    anchor.style.left = `${left}px`;
+    anchor.style.top = `${top}px`;
+    if (partMeta) {
+      anchor.dataset.lineIndex = String(partMeta.lineIndex);
+      anchor.dataset.partIndex = String(partMeta.partIndex);
+      anchor.dataset.isTarget = partMeta.isTarget ? "1" : "0";
+      anchor.dataset.textKey = partMeta.textKey || text;
+    }
+
+    const wrap = document.createElement("div");
+    wrap.className = "lyric-block is-tight";
+    wrap.style.width = `${blockW}px`;
+    wrap.style.height = `${blockH}px`;
+
+    const gridEl = document.createElement("div");
+    gridEl.className = "lyric-grid";
+    gridEl.style.width = `${gridW}px`;
+    gridEl.style.height = `${gridH}px`;
+    gridEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    gridEl.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    gridEl.style.fontSize = `${fontPxForGrid(rows, cols, cellPx)}px`;
+
+    for (let i = 0; i < chars.length; i++) {
+      const r = Math.floor(i / cols);
+      const c = i % cols;
+      const el = document.createElement("span");
+      el.className = "grid-cell";
+      const shown = displayChar(chars[i]);
+      const isPad = shown === " " && chars[i] === " ";
+      if (isPad) {
+        el.classList.add("is-pad", "has-cross");
+        const img = document.createElement("img");
+        img.className = "cross-glyph";
+        img.src = crossSrcForCell(r + c + i);
+        img.alt = "";
+        img.decoding = "async";
+        el.appendChild(img);
+      } else {
+        el.textContent = shown;
+      }
+      gridEl.appendChild(el);
+    }
+
+    wrap.appendChild(gridEl);
+    anchor.appendChild(wrap);
+    return { anchor, blockW, blockH, left, top };
+  }
+
+  /** @type {{ anchor: HTMLElement, blockW: number, blockH: number, left: number, top: number, isTarget: boolean, lineIndex: number, partIndex: number, text: string }[]} */
+  let cloudParts = [];
+  let cloudRefCellPx = 12;
+
+  function hashSeed(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function sortedPlayableEntries() {
+    return [...LINE_BOX_HIERARCHY].sort((a, b) => a.lineIndex - b.lineIndex);
+  }
+
+  function partTextForEntry(entry) {
+    const parts = entry.levels[ACTIVE_GAME_LEVEL];
+    return parts?.[0] ?? "";
+  }
+
+  function placementForEntry(entry, isTarget) {
+    const text = partTextForEntry(entry);
+    return {
+      text,
+      lineIndex: entry.lineIndex,
+      partIndex: 0,
+      isTarget: !!isTarget,
+      textKey: `${isTarget ? "target" : "decoy"}:${text}`,
+    };
+  }
+
+  /** Lyric lines after the current expected index (song order). */
+  function upcomingEntries() {
+    return sortedPlayableEntries().filter(
+      (e) => e.lineIndex > gameExpectedLineIndex
+    );
+  }
+
+  function shuffleInPlace(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function pickFarDecoyEntries(correctText, usedTexts, count) {
+    const pool = [];
+    for (const entry of sortedPlayableEntries()) {
+      const text = partTextForEntry(entry);
+      if (!text || text === correctText || usedTexts.has(text)) continue;
+      if (entry.lineIndex > gameExpectedLineIndex) continue;
+      pool.push(entry);
+    }
+    shuffleInPlace(pool);
+    return pool.slice(0, count);
+  }
+
+  /** Furthest lyric line index kept in the sliding cloud window (four boxes → expected + 3 ahead). */
+  function cloudLookaheadTailLineIndex() {
+    return gameExpectedLineIndex + (cloudMaxBoxes() - 1);
+  }
+
+  /** Initial decoys: the next `count` lyric lines in song order (lookahead window). */
+  function pickInitialCloudDecoys(correctText, count) {
+    const used = new Set([correctText]);
+    const out = [];
+    for (let d = 1; d <= count; d++) {
+      const idx = gameExpectedLineIndex + d;
+      const entry = sortedPlayableEntries().find((e) => e.lineIndex === idx);
+      if (!entry) continue;
+      const text = partTextForEntry(entry);
+      if (!text || used.has(text)) continue;
+      used.add(text);
+      out.push({ text, lineIndex: entry.lineIndex, partIndex: 0 });
+    }
+    for (const entry of pickFarDecoyEntries(correctText, used, count - out.length)) {
+      const text = partTextForEntry(entry);
+      if (used.has(text)) continue;
+      used.add(text);
+      out.push({ text, lineIndex: entry.lineIndex, partIndex: 0 });
+    }
+    return out;
+  }
+
+  function pickDecoyTexts(correctText, count) {
+    return pickInitialCloudDecoys(correctText, count);
+  }
+
+  function textsOnCloud(excludeAnchor = null) {
+    const used = new Set();
+    for (const p of cloudParts) {
+      if (excludeAnchor && p.anchor === excludeAnchor) continue;
+      used.add(p.text);
+    }
+    return used;
+  }
+
+  function replaceCloudPartContent(part, placement) {
+    const frameW = stage.clientWidth;
+    const frameH = stage.clientHeight;
+    const { left, top } = part;
+    const meta = {
+      lineIndex: placement.lineIndex,
+      partIndex: placement.partIndex ?? 0,
+      isTarget: placement.isTarget,
+      textKey: placement.textKey,
+    };
+    const { anchor, blockW, blockH } = buildLyricPartBlock(
+      placement.text,
+      frameW,
+      frameH,
+      left,
+      top,
+      cloudRefCellPx,
+      ACTIVE_GAME_LEVEL,
+      meta
+    );
+    part.anchor.remove();
+    cloudParts = cloudParts.filter((p) => p.anchor !== part.anchor);
+    partsRoot.appendChild(anchor);
+    registerCloudPart(anchor, blockW, blockH, left, top, placement);
+  }
+
+  /** If the expected line is missing after a pick, retarget the furthest decoy in place (no fade-in). */
+  function ensureExpectedOnCloud() {
+    const expected = expectedPartText();
+    if (!expected) return;
+    if (textsOnCloud(null).has(expected)) return;
+    const decoys = cloudParts.filter((p) => p.text !== expected);
+    if (!decoys.length) return;
+    let furthest = decoys[0];
+    for (const p of decoys) {
+      if (p.lineIndex > furthest.lineIndex) furthest = p;
+    }
+    const placement = targetPlacementForActiveLine();
+    placement.isTarget = false;
+    placement.textKey = `decoy:${expected}`;
+    replaceCloudPartContent(furthest, placement);
+  }
+
+  /**
+   * One replacement after a removal. Never spawns the current target (that reads as “the new box”).
+   * Extends the sliding window by placing the tail line (expected + maxBoxes − 1) when possible.
+   */
+  function pickLookaheadTailReplacement(excludeAnchor) {
+    const expected = expectedPartText();
+    const used = textsOnCloud(excludeAnchor);
+    const tryEntry = (entry) => {
+      if (!entry) return null;
+      const text = partTextForEntry(entry);
+      if (!text || used.has(text) || text === expected) return null;
+      return placementForEntry(entry, false);
+    };
+
+    const tailIdx = cloudLookaheadTailLineIndex();
+    const tailEntry = sortedPlayableEntries().find((e) => e.lineIndex === tailIdx);
+    const tailPlacement = tryEntry(tailEntry);
+    if (tailPlacement) return tailPlacement;
+
+    let farthest = null;
+    for (const entry of upcomingEntries()) {
+      const text = partTextForEntry(entry);
+      if (!text || used.has(text) || text === expected) continue;
+      if (!farthest || entry.lineIndex > farthest.lineIndex) farthest = entry;
+    }
+    if (farthest) return placementForEntry(farthest, false);
+
+    for (const entry of pickFarDecoyEntries(expected, used, 8)) {
+      const placement = tryEntry(entry);
+      if (placement) return placement;
+    }
+    return null;
+  }
+
+  function pickCloudPoolReplacement(excludeAnchor) {
+    return pickLookaheadTailReplacement(excludeAnchor);
+  }
+
+  function pickDecoyReplacementText(excludeAnchor) {
+    return pickLookaheadTailReplacement(excludeAnchor);
+  }
+
+  function targetPlacementForActiveLine() {
+    const lineEntry = activeLineEntry();
+    const text = expectedPartText();
+    return {
+      text,
+      lineIndex: lineEntry.lineIndex,
+      partIndex: 0,
+      isTarget: true,
+      textKey: `target:${text}`,
+    };
+  }
+
+  function dedupePlacementsByText(placements) {
+    const seen = new Set();
+    const out = [];
+    for (const p of placements) {
+      if (seen.has(p.text)) continue;
+      seen.add(p.text);
+      out.push(p);
+    }
+    return out;
+  }
+
+  function randomAmbientDelayMs() {
+    return (
+      DECOY_AMBIENT_MIN_MS +
+      Math.random() * (DECOY_AMBIENT_MAX_MS - DECOY_AMBIENT_MIN_MS)
+    );
+  }
+
+  function stopAmbientDecoyRotation() {
+    if (ambientDecoyTimerId) {
+      window.clearTimeout(ambientDecoyTimerId);
+      ambientDecoyTimerId = null;
+    }
+  }
+
+  function ambientDecoyCandidates() {
+    const expected = expectedPartText();
+    return cloudParts.filter((p) => p.text !== expected);
+  }
+
+  function scheduleNextAmbientDecoyTick() {
+    stopAmbientDecoyRotation();
+    if (!PLAY_GAME || ALL_LEVELS_PREVIEW) return;
+    if (!ambientDecoyCandidates().length) return;
+    ambientDecoyTimerId = window.setTimeout(() => {
+      ambientDecoyTimerId = null;
+      onAmbientDecoyTick();
+    }, randomAmbientDelayMs());
+  }
+
+  function ensureAmbientDecoyRotation() {
+    if (!PLAY_GAME || ALL_LEVELS_PREVIEW || !ambientDecoyCandidates().length) {
+      stopAmbientDecoyRotation();
+      return;
+    }
+    if (!ambientDecoyTimerId) scheduleNextAmbientDecoyTick();
+  }
+
+  function onAmbientDecoyTick() {
+    if (!PLAY_GAME || ALL_LEVELS_PREVIEW) return;
+    if (pickLocked || ambientDecoyCycleBusy) {
+      scheduleNextAmbientDecoyTick();
+      return;
+    }
+    const candidates = ambientDecoyCandidates();
+    if (!candidates.length) {
+      stopAmbientDecoyRotation();
+      return;
+    }
+    ambientDecoyCycleBusy = true;
+    const part = candidates[Math.floor(Math.random() * candidates.length)];
+    part.anchor.classList.add("is-picked-wrong");
+    window.setTimeout(() => {
+      if (cloudParts.includes(part)) {
+        finishPickRemoval(part);
+        const decoy = pickDecoyReplacementText(null);
+        if (decoy && canSpawnCloudReplacement()) {
+          const pos = randomPositionForNewBlock(
+            decoy.text,
+            `ambient:${gameExpectedLineIndex}:${cloudParts.length}:${performance.now()}`
+          );
+          if (pos) fadeInCloudReplacement(pos.left, pos.top, decoy);
+        }
+      }
+      ambientDecoyCycleBusy = false;
+      scheduleNextAmbientDecoyTick();
+    }, PICK_FADE_MS);
+  }
+
+  function registerCloudPart(anchor, bw, bh, left, top, placement) {
+    const part = {
+      anchor,
+      blockW: bw,
+      blockH: bh,
+      left,
+      top,
+      isTarget: placement.isTarget,
+      lineIndex: placement.lineIndex,
+      partIndex: placement.partIndex ?? 0,
+      text: placement.text,
+    };
+    cloudParts.push(part);
+    ensureAmbientDecoyRotation();
+    return part;
+  }
+
+  function fadeInCloudReplacement(left, top, placement) {
+    const frameW = stage.clientWidth;
+    const frameH = stage.clientHeight;
+    const meta = {
+      lineIndex: placement.lineIndex,
+      partIndex: placement.partIndex ?? 0,
+      isTarget: placement.isTarget,
+      textKey: placement.textKey,
+    };
+    const { anchor, blockW, blockH } = buildLyricPartBlock(
+      placement.text,
+      frameW,
+      frameH,
+      left,
+      top,
+      cloudRefCellPx,
+      ACTIVE_GAME_LEVEL,
+      meta
+    );
+    anchor.classList.add("is-spawn-in");
+    partsRoot.appendChild(anchor);
+    registerCloudPart(anchor, blockW, blockH, left, top, placement);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => anchor.classList.add("is-spawn-visible"));
+    });
+  }
+
+  function finishPickRemoval(part) {
+    part.anchor.remove();
+    cloudParts = cloudParts.filter((p) => p.anchor !== part.anchor);
+  }
+
+  function cloudPlacementRects(excludeAnchor = null) {
+    return cloudParts
+      .filter((p) => !excludeAnchor || p.anchor !== excludeAnchor)
+      .map((p) => ({
+        left: p.left,
+        top: p.top,
+        blockW: p.blockW,
+        blockH: p.blockH,
+      }));
+  }
+
+  function positionFitsCloud(candidate, placed, gap) {
+    for (const p of placed) {
+      if (rectsOverlap(candidate, p, gap)) return false;
+    }
+    return true;
+  }
+
+  function findCloudPositionForBlock(blockW, blockH, seedKey, excludeAnchor = null) {
+    const frameW = stage.clientWidth;
+    const frameH = stage.clientHeight;
+    const pad = CLOUD_LAYOUT_PAD;
+    const gap = CLOUD_LAYOUT_GAP;
+    const maxLeft = frameW - pad - blockW;
+    const maxTop = frameH - pad - blockH;
+    if (maxLeft < pad || maxTop < pad) return null;
+    const placed = cloudPlacementRects(excludeAnchor);
+    const seedBase = hashSeed(seedKey);
+    for (let attempt = 0; attempt < CLOUD_PLACE_ATTEMPTS; attempt++) {
+      const rng = cloudRandFactory(seedBase + attempt * 131);
+      const candidate = {
+        left: pad + rng() * (maxLeft - pad),
+        top: pad + rng() * (maxTop - pad),
+        blockW,
+        blockH,
+      };
+      if (positionFitsCloud(candidate, placed, gap)) {
+        return { left: candidate.left, top: candidate.top };
+      }
+    }
+    const stepX = Math.max(6, Math.floor((blockW + gap) / 3));
+    const stepY = Math.max(6, Math.floor((blockH + gap) / 3));
+    for (let top = pad; top <= maxTop; top += stepY) {
+      for (let left = pad; left <= maxLeft; left += stepX) {
+        const candidate = { left, top, blockW, blockH };
+        if (positionFitsCloud(candidate, placed, gap)) {
+          return { left, top };
+        }
+      }
+    }
+    return null;
+  }
+
+  function randomPositionForNewBlock(text, seedKey, excludeAnchor = null) {
+    const frameW = stage.clientWidth;
+    const frameH = stage.clientHeight;
+    const { blockW, blockH } = measureLyricLineBox(
+      text,
+      frameW,
+      frameH,
+      cloudRefCellPx,
+      ACTIVE_GAME_LEVEL
+    );
+    return findCloudPositionForBlock(blockW, blockH, seedKey, excludeAnchor);
+  }
+
+  function rectsOverlap(a, b, gap) {
+    return !(
+      a.left + a.blockW + gap <= b.left ||
+      b.left + b.blockW + gap <= a.left ||
+      a.top + a.blockH + gap <= b.top ||
+      b.top + b.blockH + gap <= a.top
+    );
+  }
+
+  function layoutCloudPlayfield(frameW, frameH) {
+    stopAmbientDecoyRotation();
+    ambientDecoyCycleBusy = false;
+    cloudParts = [];
+    const lineEntry = activeLineEntry();
+    const parts = lineEntry.levels[ACTIVE_GAME_LEVEL];
+    const pad = CLOUD_LAYOUT_PAD;
+    const gap = CLOUD_LAYOUT_GAP;
+    const placements = [];
+
+    const targetMeta = {
+      lineIndex: lineEntry.lineIndex,
+      partIndex: 0,
+      isTarget: true,
+      textKey: `target:${lineEntry.lineIndex}:0`,
+    };
+    placements.push({
+      text: parts[0],
+      meta: targetMeta,
+      isTarget: true,
+    });
+    for (const decoy of pickDecoyTexts(parts[0], initialCloudDecoyCount())) {
+      placements.push({
+        text: decoy.text,
+        meta: {
+          lineIndex: decoy.lineIndex,
+          partIndex: decoy.partIndex,
+          isTarget: false,
+          textKey: `decoy:${decoy.text}`,
+        },
+        isTarget: false,
+      });
+    }
+    const uniquePlacements = dedupePlacementsByText(placements);
+
+    const allTexts = uniquePlacements.map((p) => p.text);
+    let refCellPx = cloudReferenceCellPx(allTexts, frameW, frameH, ACTIVE_GAME_LEVEL);
+    let boxes = uniquePlacements.map((p) =>
+      measureLyricLineBox(p.text, frameW, frameH, refCellPx, ACTIVE_GAME_LEVEL)
+    );
+    const seedBase = hashSeed(`cloud:${gameExpectedLineIndex}`);
+    let randomLayout = layoutCloudRandomSlots(boxes, frameW, frameH, pad, gap, seedBase);
+    for (let shrink = 0; shrink < 14 && !randomLayout.fits; shrink++) {
+      refCellPx *= 0.91;
+      boxes = uniquePlacements.map((p) =>
+        measureLyricLineBox(p.text, frameW, frameH, refCellPx, ACTIVE_GAME_LEVEL)
+      );
+      randomLayout = layoutCloudRandomSlots(boxes, frameW, frameH, pad, gap, seedBase + shrink * 17);
+    }
+    const slots = randomLayout.slots || [];
+    cloudRefCellPx = refCellPx;
+
+    for (let i = 0; i < uniquePlacements.length; i++) {
+      const slot = slots[i];
+      if (!slot) continue;
+      const left = slot.left;
+      const top = slot.top;
+      const { anchor, blockW: bw, blockH: bh } = buildLyricPartBlock(
+        uniquePlacements[i].text,
+        frameW,
+        frameH,
+        left,
+        top,
+        refCellPx,
+        ACTIVE_GAME_LEVEL,
+        uniquePlacements[i].meta
+      );
+      partsRoot.appendChild(anchor);
+      registerCloudPart(anchor, bw, bh, left, top, {
+        text: uniquePlacements[i].text,
+        isTarget: uniquePlacements[i].isTarget,
+        lineIndex: uniquePlacements[i].meta.lineIndex,
+        partIndex: uniquePlacements[i].meta.partIndex ?? 0,
+      });
+    }
+
+    ensureAmbientDecoyRotation();
+    return {
+      left: frameW * 0.5,
+      top: frameH * 0.78,
+      blockW: 0,
+      blockH: 0,
+    };
+  }
+
+  function choosePartsGridCols(boxes, gap) {
+    const n = boxes.length;
+    if (n <= 1) return 1;
+    let bestCols = 1;
+    let bestScore = Infinity;
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      let maxRowW = 0;
+      let totalH = 0;
+      for (let r = 0; r < rows; r++) {
+        let rowW = 0;
+        let rowH = 0;
+        let placed = 0;
+        for (let c = 0; c < cols; c++) {
+          const i = r * cols + c;
+          if (i >= n) break;
+          if (placed > 0) rowW += gap;
+          rowW += boxes[i].blockW;
+          rowH = Math.max(rowH, boxes[i].blockH);
+          placed++;
+        }
+        maxRowW = Math.max(maxRowW, rowW);
+        totalH += rowH + (r > 0 ? gap : 0);
+      }
+      const aspect = maxRowW / Math.max(totalH, 1);
+      const score = Math.abs(aspect - 1) + (cols === n ? 0.02 : 0);
+      if (score < bestScore || (score === bestScore && cols < bestCols)) {
+        bestScore = score;
+        bestCols = cols;
+      }
+    }
+    return bestCols;
+  }
+
+  function levelKeysForLine(lineEntry) {
+    return Object.keys(lineEntry.levels)
+      .map(Number)
+      .filter((k) => lineEntry.levels[k]?.length)
+      .sort((a, b) => a - b);
+  }
+
+  function measureLevelRow(parts, frameW, frameH, cellPx, gap, gameLevel) {
+    const boxes = parts.map((text) =>
+      measureLyricLineBox(text, frameW, frameH, cellPx, gameLevel)
+    );
+    let rowW = 0;
+    let rowH = 0;
+    for (let i = 0; i < boxes.length; i++) {
+      if (i > 0) rowW += gap;
+      rowW += boxes[i].blockW;
+      rowH = Math.max(rowH, boxes[i].blockH);
+    }
+    return { parts, boxes, rowW, rowH };
+  }
+
+  function measureAllLevelsStack(lineEntry, frameW, frameH, cellPx, partGap, levelGap) {
+    const levels = levelKeysForLine(lineEntry);
+    const rows = levels.map((lv) =>
+      measureLevelRow(lineEntry.levels[lv], frameW, frameH, cellPx, partGap, lv)
+    );
+    let totalH = 0;
+    let maxW = 0;
+    for (let i = 0; i < rows.length; i++) {
+      maxW = Math.max(maxW, rows[i].rowW);
+      totalH += rows[i].rowH + (i > 0 ? levelGap : 0);
+    }
+    return { levels, rows, totalH, maxW };
+  }
+
+  function layoutSingleLevel(parts, frameW, frameH, refCellPx, gap, gameLevel) {
+    const boxes = parts.map((text) =>
+      measureLyricLineBox(text, frameW, frameH, refCellPx, gameLevel)
+    );
+    const n = parts.length;
+    const gridCols = choosePartsGridCols(boxes, gap);
+    const gridRows = Math.ceil(n / gridCols);
+    const rowMetrics = [];
+    for (let r = 0; r < gridRows; r++) {
+      let rowW = 0;
+      let rowH = 0;
+      const indices = [];
+      for (let c = 0; c < gridCols; c++) {
+        const i = r * gridCols + c;
+        if (i >= n) break;
+        if (indices.length > 0) rowW += gap;
+        indices.push(i);
+        rowW += boxes[i].blockW;
+        rowH = Math.max(rowH, boxes[i].blockH);
+      }
+      rowMetrics.push({ rowW, rowH, indices });
+    }
+    const totalW = Math.max(...rowMetrics.map((m) => m.rowW), 0);
+    const totalH = rowMetrics.reduce((sum, m, ri) => sum + m.rowH + (ri > 0 ? gap : 0), 0);
+    const baseX = (frameW - totalW) / 2;
+    let y = (frameH - totalH) / 2;
+    let lastAnchor = null;
+    for (const { rowW, rowH, indices } of rowMetrics) {
+      let x = baseX + (totalW - rowW) / 2;
+      for (const i of indices) {
+        const partTop = y + (rowH - boxes[i].blockH) / 2;
+        const { anchor, blockW, blockH } = buildLyricPartBlock(
+          parts[i],
+          frameW,
+          frameH,
+          x,
+          partTop,
+          refCellPx,
+          gameLevel
+        );
+        partsRoot.appendChild(anchor);
+        lastAnchor = { anchor, blockW, blockH, left: x, top: partTop };
+        x += blockW + gap;
+      }
+      y += rowH + gap;
+    }
+    return lastAnchor;
+  }
+
+  function layoutAllLevelsPreview(frameW, frameH) {
+    const basePartGap = 10;
+    const baseLevelGap = 14;
+    const pad = 14;
+    const lineEntry = activeLineEntry();
+    const refCellPx = referenceCellPxForLine(lineEntry, frameW, frameH);
+    const availW = frameW - pad * 2;
+    const availH = frameH - pad * 2;
+    let cellPx = refCellPx;
+    let partGap = basePartGap;
+    let levelGap = baseLevelGap;
+    let stack = measureAllLevelsStack(
+      lineEntry,
+      frameW,
+      frameH,
+      cellPx,
+      partGap,
+      levelGap
+    );
+    for (let pass = 0; pass < 32; pass++) {
+      if (stack.maxW <= availW && stack.totalH <= availH) break;
+      const scale = Math.min(availW / stack.maxW, availH / stack.totalH);
+      cellPx = Math.max(4, cellPx * scale * 0.9);
+      const gapRatio = cellPx / refCellPx;
+      partGap = Math.max(2, basePartGap * gapRatio);
+      levelGap = Math.max(3, baseLevelGap * gapRatio);
+      stack = measureAllLevelsStack(
+        lineEntry,
+        frameW,
+        frameH,
+        cellPx,
+        partGap,
+        levelGap
+      );
+    }
+    const totalW = stack.maxW;
+    const totalH = stack.totalH;
+    const baseX = (frameW - totalW) / 2;
+    let y = (frameH - totalH) / 2;
+    for (let ri = 0; ri < stack.rows.length; ri++) {
+      const { parts, boxes, rowW, rowH } = stack.rows[ri];
+      const gameLevel = stack.levels[ri];
+      let x = baseX + (totalW - rowW) / 2;
+      for (let i = 0; i < parts.length; i++) {
+        const partTop = y + (rowH - boxes[i].blockH) / 2;
+        const { anchor } = buildLyricPartBlock(
+          parts[i],
+          frameW,
+          frameH,
+          x,
+          partTop,
+          cellPx,
+          gameLevel
+        );
+        partsRoot.appendChild(anchor);
+        x += boxes[i].blockW + partGap;
+      }
+      y += rowH + levelGap;
+    }
+    return null;
+  }
+
+  let pathPoints = [];
+  /** Only path from this index counts toward loop / pick detection (visual trail may be longer). */
+  let loopSegmentStartIndex = 0;
+  let isDrawing = false;
+  let pickLocked = false;
+  let ambientDecoyTimerId = null;
+  let ambientDecoyCycleBusy = false;
+
+  function getStagePoint(clientX, clientY) {
+    const r = stage.getBoundingClientRect();
+    return { x: clientX - r.left, y: clientY - r.top };
+  }
+
+  function clampToStage(x, y, margin = 10) {
+    const w = stage.clientWidth;
+    const h = stage.clientHeight;
+    return {
+      x: Math.min(w - margin, Math.max(margin, x)),
+      y: Math.min(h - margin, Math.max(margin, y)),
+    };
+  }
+
+  function orient(a, b, c) {
+    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  }
+
+  function onSegment(a, b, p) {
+    return (
+      Math.min(a.x, b.x) <= p.x &&
+      p.x <= Math.max(a.x, b.x) &&
+      Math.min(a.y, b.y) <= p.y &&
+      p.y <= Math.max(a.y, b.y)
+    );
+  }
+
+  function segmentsIntersect(p1, p2, p3, p4) {
+    const o1 = orient(p1, p2, p3);
+    const o2 = orient(p1, p2, p4);
+    const o3 = orient(p3, p4, p1);
+    const o4 = orient(p3, p4, p2);
+    if (o1 === 0 && onSegment(p1, p2, p3)) return { x: p3.x, y: p3.y };
+    if (o2 === 0 && onSegment(p1, p2, p4)) return { x: p4.x, y: p4.y };
+    if (o3 === 0 && onSegment(p3, p4, p1)) return { x: p1.x, y: p1.y };
+    if (o4 === 0 && onSegment(p3, p4, p2)) return { x: p2.x, y: p2.y };
+    if (o1 > 0 !== o2 > 0 && o3 > 0 !== o4 > 0) {
+      const A = p2.y - p1.y;
+      const B = p1.x - p2.x;
+      const C = A * p1.x + B * p1.y;
+      const D = p4.y - p3.y;
+      const E = p3.x - p4.x;
+      const F = D * p3.x + E * p3.y;
+      const det = A * E - D * B;
+      if (Math.abs(det) < 1e-9) return null;
+      return { x: (E * C - B * F) / det, y: (A * F - D * C) / det };
+    }
+    return null;
+  }
+
+  function detectLoopPickPoint(points, startIndex = 0) {
+    const n = points.length;
+    if (n - startIndex < 10) return null;
+    const a = points[n - 2];
+    const b = points[n - 1];
+    for (let i = Math.max(startIndex, 0); i < n - 3; i++) {
+      const hit = segmentsIntersect(a, b, points[i], points[i + 1]);
+      if (!hit) continue;
+      const loop = points.slice(i + 1);
+      if (loop.length < 3) continue;
+      let cx = 0;
+      let cy = 0;
+      for (const p of loop) {
+        cx += p.x;
+        cy += p.y;
+      }
+      return { x: cx / loop.length, y: cy / loop.length };
+    }
+    return null;
+  }
+
+  function hitTestCloud(cx, cy) {
+    for (let zi = cloudParts.length - 1; zi >= 0; zi--) {
+      const p = cloudParts[zi];
+      if (
+        cx >= p.left &&
+        cx <= p.left + p.blockW &&
+        cy >= p.top &&
+        cy <= p.top + p.blockH
+      ) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  function clearTrail() {
+    pathPoints = [];
+    loopSegmentStartIndex = 0;
+    stopTrailFade();
+    ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
+  }
+
+  function drawTrail() {
+    const w = stage.clientWidth;
+    const h = stage.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+    pruneFadedTrailHead();
+    if (pathPoints.length < 2) {
+      stopTrailFade();
+      return;
+    }
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    let anyVisible = false;
+    for (let i = 1; i < pathPoints.length; i++) {
+      const p0 = pathPoints[i - 1];
+      const p1 = pathPoints[i];
+      const alpha = Math.min(trailAlphaAt(p0.t), trailAlphaAt(p1.t));
+      if (alpha <= 0.02) continue;
+      anyVisible = true;
+      const speed = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+      ctx.lineWidth = Math.min(11, Math.max(1.8, 1.8 + speed * 0.14));
+      ctx.strokeStyle = `rgba(220, 20, 40, ${alpha})`;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+    }
+    if (!anyVisible) {
+      pathPoints = [];
+      loopSegmentStartIndex = 0;
+      stopTrailFade();
+    }
+  }
+
+  function moveRose(x, y) {
+    rose.style.left = `${x}px`;
+    rose.style.top = `${y}px`;
+  }
+
+  const PICK_FADE_MS = 480;
+  const DECOY_AMBIENT_MIN_MS = 5000;
+  const DECOY_AMBIENT_MAX_MS = 8000;
+  const TRAIL_FADE_MS = 4200;
+  const TRAIL_ALPHA_MAX = 0.88;
+  let trailAnimFrame = 0;
+
+  function trailAlphaAt(timeMs) {
+    const age = performance.now() - timeMs;
+    if (age >= TRAIL_FADE_MS) return 0;
+    return TRAIL_ALPHA_MAX * (1 - age / TRAIL_FADE_MS);
+  }
+
+  function pruneFadedTrailHead() {
+    while (pathPoints.length > 1 && trailAlphaAt(pathPoints[1].t) <= 0) {
+      pathPoints.shift();
+      loopSegmentStartIndex = Math.max(0, loopSegmentStartIndex - 1);
+    }
+  }
+
+  function scheduleTrailFade() {
+    if (trailAnimFrame) return;
+    trailAnimFrame = requestAnimationFrame(trailFadeTick);
+  }
+
+  function stopTrailFade() {
+    if (!trailAnimFrame) return;
+    cancelAnimationFrame(trailAnimFrame);
+    trailAnimFrame = 0;
+  }
+
+  function trailFadeTick() {
+    trailAnimFrame = 0;
+    if (pathPoints.length < 2) return;
+    drawTrail();
+    if (pathPoints.length >= 2) scheduleTrailFade();
+  }
+
+  const FLY_TO_ASSEMBLY_MS = 520;
+
+  function flyCorrectPickToAssembly(anchor, onComplete) {
+    cloudParts = cloudParts.filter((p) => p.anchor !== anchor);
+    const start = anchor.getBoundingClientRect();
+    const targetLine = assemblyEl.lastElementChild;
+    const target = targetLine
+      ? targetLine.getBoundingClientRect()
+      : assemblyEl.getBoundingClientRect();
+    const startCx = start.left + start.width / 2;
+    const startCy = start.top + start.height / 2;
+    const targetCx = target.left + target.width / 2;
+    const targetCy = target.top + target.height / 2;
+
+    anchor.classList.add("is-fly-overlay", "is-flying-to-assembly");
+    anchor.style.left = `${start.left}px`;
+    anchor.style.top = `${start.top}px`;
+    anchor.style.width = `${start.width}px`;
+    anchor.style.height = `${start.height}px`;
+    drawLayer.insertBefore(anchor, drawLayer.firstChild);
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      anchor.removeEventListener("transitionend", onTransitionEnd);
+      anchor.remove();
+      onComplete?.();
+    };
+    const onTransitionEnd = (e) => {
+      if (e.target !== anchor || e.propertyName !== "transform") return;
+      finish();
+    };
+    anchor.addEventListener("transitionend", onTransitionEnd);
+
+    anchor.style.setProperty("--fly-dx", "0px");
+    anchor.style.setProperty("--fly-dy", "0px");
+    void anchor.offsetWidth;
+    anchor.style.setProperty("--fly-dx", `${targetCx - startCx}px`);
+    anchor.style.setProperty("--fly-dy", `${targetCy - startCy}px`);
+    anchor.classList.add("is-fly-run");
+    window.setTimeout(finish, FLY_TO_ASSEMBLY_MS + 80);
+  }
+
+  function revealAssembledLine(fullLine) {
+    gameAssembledLines.push(fullLine);
+    renderAssembly();
+    const slot = assemblyEl.lastElementChild;
+    if (slot) {
+      slot.classList.remove("is-empty");
+      slot.classList.add("is-reveal-pop");
+    }
+  }
+
+  function resolvePick(hit) {
+    if (!hit || pickLocked) return;
+    pickLocked = true;
+    loopSegmentStartIndex = pathPoints.length;
+
+    const correct = hit.text === expectedPartText();
+
+    const afterPickFade = (wasCorrect) => {
+      if (!wasCorrect) finishPickRemoval(hit);
+      if (wasCorrect) {
+        gameExpectedLineIndex += 1;
+        ensureExpectedOnCloud();
+        const spawn = pickLookaheadTailReplacement(null);
+        if (spawn && canSpawnCloudReplacement()) {
+          const pos = randomPositionForNewBlock(
+            spawn.text,
+            `repl-correct:${gameExpectedLineIndex}:${cloudParts.length}`
+          );
+          if (pos) fadeInCloudReplacement(pos.left, pos.top, spawn);
+        }
+      } else {
+        const decoy = pickDecoyReplacementText(null);
+        if (decoy && canSpawnCloudReplacement()) {
+          const pos = randomPositionForNewBlock(
+            decoy.text,
+            `repl-wrong:${gameExpectedLineIndex}:${cloudParts.length}`
+          );
+          if (pos) fadeInCloudReplacement(pos.left, pos.top, decoy);
+        }
+      }
+      pickLocked = false;
+      ensureAmbientDecoyRotation();
+      drawTrail();
+      scheduleTrailFade();
+    };
+
+    if (correct) {
+      const bonus = Math.floor(countdownRemaining * 10);
+      sessionScore += 100 + bonus;
+      countdownRemaining = 10.0;
+      const assembledFull = activeLineEntry().full;
+      updateHud();
+      flyCorrectPickToAssembly(hit.anchor, () => {
+        revealAssembledLine(assembledFull);
+        updateHud();
+        afterPickFade(true);
+      });
+    } else {
+      countdownRemaining = Math.max(0, countdownRemaining - 3);
+      updateHud();
+      hit.anchor.classList.add("is-picked-wrong");
+      window.setTimeout(() => afterPickFade(false), PICK_FADE_MS);
+    }
+  }
+
+  function appendPathPoint(x, y) {
+    const last = pathPoints[pathPoints.length - 1];
+    if (last && Math.hypot(x - last.x, y - last.y) < 2.5) return;
+    pathPoints.push({ x, y, t: performance.now() });
+    drawTrail();
+    scheduleTrailFade();
+    const pickPt = detectLoopPickPoint(pathPoints, loopSegmentStartIndex);
+    if (!pickPt) return;
+    const hit = hitTestCloud(pickPt.x, pickPt.y);
+    if (hit) resolvePick(hit);
+  }
+
+  function onPointerDown(e) {
+    if (!PLAY_GAME || ALL_LEVELS_PREVIEW || pickLocked) return;
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    stage.setPointerCapture(e.pointerId);
+    isDrawing = true;
+    clearTrail();
+    stage.classList.add("is-drawing");
+    const raw = getStagePoint(e.clientX, e.clientY);
+    const p = clampToStage(raw.x, raw.y);
+    moveRose(p.x, p.y);
+    pathPoints.push({ ...p, t: performance.now() });
+    drawTrail();
+    scheduleTrailFade();
+  }
+
+  function onPointerMove(e) {
+    if (!isDrawing) return;
+    const raw = getStagePoint(e.clientX, e.clientY);
+    const p = clampToStage(raw.x, raw.y);
+    moveRose(p.x, p.y);
+    appendPathPoint(p.x, p.y);
+  }
+
+  function onPointerEnd(e) {
+    if (!isDrawing) return;
+    isDrawing = false;
+    stage.classList.remove("is-drawing");
+    if (stage.hasPointerCapture?.(e.pointerId)) stage.releasePointerCapture(e.pointerId);
+    if (!pickLocked) clearTrail();
+  }
+
+  if (PLAY_GAME) {
+    stage.addEventListener("pointerdown", onPointerDown);
+    stage.addEventListener("pointermove", onPointerMove);
+    stage.addEventListener("pointerup", onPointerEnd);
+    stage.addEventListener("pointercancel", onPointerEnd);
+    setInterval(() => {
+      if (!PLAY_GAME || pickLocked) return;
+      countdownRemaining = Math.max(0, countdownRemaining - 0.1);
+      updateHud();
+    }, 100);
+  }
+
+  function layoutParts() {
+    const frameW = stage.clientWidth;
+    const frameH = stage.clientHeight;
+    partsRoot.innerHTML = "";
+    pickLocked = false;
+    isDrawing = false;
+    clearTrail();
+    document.body.classList.toggle("is-all-levels-preview", ALL_LEVELS_PREVIEW);
+    document.body.classList.toggle("is-play-game", PLAY_GAME && !ALL_LEVELS_PREVIEW);
+    rose.style.display = ALL_LEVELS_PREVIEW ? "none" : "";
+
+    let lastAnchor = null;
+    if (ALL_LEVELS_PREVIEW) {
+      lastAnchor = layoutAllLevelsPreview(frameW, frameH);
+    } else if (PLAY_GAME) {
+      lastAnchor = layoutCloudPlayfield(frameW, frameH);
+    } else {
+      const gap = 20;
+      const lineEntry = activeLineEntry();
+      const refCellPx = referenceCellPxForLine(lineEntry, frameW, frameH);
+      lastAnchor = layoutSingleLevel(
+        DISPLAY_PARTS(),
+        frameW,
+        frameH,
+        refCellPx,
+        gap,
+        ACTIVE_GAME_LEVEL
+      );
+    }
+
+    resizeCanvas();
+    if (PLAY_GAME && !ALL_LEVELS_PREVIEW) {
+      moveRose(frameW * 0.5, frameH * 0.72);
+    } else if (lastAnchor) {
+      rose.style.left = `${lastAnchor.left + lastAnchor.blockW * 0.72}px`;
+      rose.style.top = `${lastAnchor.top + lastAnchor.blockH * 0.55}px`;
+    }
+  }
+
+  function resizeCanvas() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = stage.clientWidth;
+    const h = stage.clientHeight;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (pathPoints.length >= 2) {
+      drawTrail();
+      scheduleTrailFade();
+    }
+  }
+
+  layoutParts();
+  window.addEventListener("resize", layoutParts);
+})();
+</script>
+</body>
+</html>
