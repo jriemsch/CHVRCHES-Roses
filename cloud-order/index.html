@@ -1033,10 +1033,17 @@
       },
     },
   ];
-  const ACTIVE_GAME_LEVEL = 1;
+  const ACTIVE_GAME_LEVEL = 3;
   /** Stack every defined level for the active line (horz parts, vert levels). */
   const ALL_LEVELS_PREVIEW = !PLAY_GAME;
   let gameExpectedLineIndex = 0;
+  /** Next part index within the active lyric line (levels > 1). */
+  let gameExpectedPartIndex = 0;
+  /** Phrases placed for the line currently being assembled (levels > 1). */
+  const currentLineAssemblyParts = [];
+  function lineUsesMultiPartPlay() {
+    return ACTIVE_GAME_LEVEL > 1;
+  }
   const CLOUD_DECOY_COUNT = 5;
   /** Simultaneous boxes on the playfield (target + decoys); level 1 stays sparse. */
   const CLOUD_MAX_BOXES_BY_LEVEL = { 1: 4 };
@@ -1065,9 +1072,15 @@
     }
     return LINE_BOX_HIERARCHY[38];
   }
+  function partsForEntry(entry) {
+    return entry?.levels?.[ACTIVE_GAME_LEVEL] ?? [];
+  }
   function expectedPartText() {
-    const parts = activeLineEntry().levels[ACTIVE_GAME_LEVEL];
-    return parts?.[0] ?? "";
+    const parts = partsForEntry(activeLineEntry());
+    if (lineUsesMultiPartPlay()) {
+      return parts[gameExpectedPartIndex] ?? "";
+    }
+    return parts[0] ?? "";
   }
   const DISPLAY_PARTS = () => activeLineEntry().levels[ACTIVE_GAME_LEVEL];
   const LYRIC_PART_SCALE = 0.5;
@@ -1090,7 +1103,13 @@
   function renderAssembly() {
     assemblyEl.innerHTML = "";
     if (PLAY_GAME) {
-      const recent = gameAssembledLines.slice(-ASSEMBLY_SLOT_COUNT);
+      let recent = gameAssembledLines.slice(-ASSEMBLY_SLOT_COUNT);
+      if (lineUsesMultiPartPlay() && currentLineAssemblyParts.length) {
+        const partial = currentLineAssemblyParts.join(" ");
+        recent = [...recent];
+        if (recent.length >= ASSEMBLY_SLOT_COUNT) recent.shift();
+        recent.push(partial);
+      }
       const padCount = ASSEMBLY_SLOT_COUNT - recent.length;
       const slots = [...Array(padCount).fill(""), ...recent];
       slots.forEach((line) => {
@@ -1639,19 +1658,19 @@
     return [...LINE_BOX_HIERARCHY].sort((a, b) => a.lineIndex - b.lineIndex);
   }
 
-  function partTextForEntry(entry) {
-    const parts = entry.levels[ACTIVE_GAME_LEVEL];
-    return parts?.[0] ?? "";
+  function partTextForEntry(entry, partIdx = 0) {
+    const parts = partsForEntry(entry);
+    return parts[partIdx] ?? parts[0] ?? "";
   }
 
-  function placementForEntry(entry, isTarget) {
-    const text = partTextForEntry(entry);
+  function placementForEntry(entry, isTarget, partIdx = 0) {
+    const text = partTextForEntry(entry, partIdx);
     return {
       text,
       lineIndex: entry.lineIndex,
-      partIndex: 0,
+      partIndex: partIdx,
       isTarget: !!isTarget,
-      textKey: `${isTarget ? "target" : "decoy"}:${text}`,
+      textKey: `${isTarget ? "target" : "decoy"}:${entry.lineIndex}:${partIdx}:${text}`,
     };
   }
 
@@ -1813,9 +1832,9 @@
     return {
       text,
       lineIndex: lineEntry.lineIndex,
-      partIndex: 0,
+      partIndex: gameExpectedPartIndex,
       isTarget: true,
-      textKey: `target:${text}`,
+      textKey: `target:${lineEntry.lineIndex}:${gameExpectedPartIndex}:${text}`,
     };
   }
 
@@ -1850,6 +1869,10 @@
   }
 
   function isProtectedFromAmbientRemoval(part) {
+    if (lineUsesMultiPartPlay()) {
+      if (part.lineIndex === gameExpectedLineIndex) return true;
+      return part.lineIndex === nextUpcomingLineIndex();
+    }
     return part.lineIndex === nextUpcomingLineIndex();
   }
 
@@ -2039,23 +2062,50 @@
     ambientDecoyCycleBusy = false;
     cloudParts = [];
     const lineEntry = activeLineEntry();
-    const parts = lineEntry.levels[ACTIVE_GAME_LEVEL];
+    const parts = partsForEntry(lineEntry);
     const pad = CLOUD_LAYOUT_PAD;
     const gap = CLOUD_LAYOUT_GAP;
     const placements = [];
 
-    const targetMeta = {
-      lineIndex: lineEntry.lineIndex,
-      partIndex: 0,
-      isTarget: true,
-      textKey: `target:${lineEntry.lineIndex}:0`,
-    };
-    placements.push({
-      text: parts[0],
-      meta: targetMeta,
-      isTarget: true,
-    });
-    for (const decoy of pickDecoyTexts(parts[0], initialCloudDecoyCount())) {
+    if (lineUsesMultiPartPlay() && parts.length > 1) {
+      for (let pi = 0; pi < parts.length; pi++) {
+        placements.push({
+          text: parts[pi],
+          meta: {
+            lineIndex: lineEntry.lineIndex,
+            partIndex: pi,
+            isTarget: pi === gameExpectedPartIndex,
+            textKey: `line:${lineEntry.lineIndex}:${pi}`,
+          },
+          isTarget: pi === gameExpectedPartIndex,
+        });
+      }
+      const decoySlots = Math.max(0, cloudMaxBoxes() - placements.length);
+      for (const decoy of pickDecoyTexts(expectedPartText(), decoySlots)) {
+        placements.push({
+          text: decoy.text,
+          meta: {
+            lineIndex: decoy.lineIndex,
+            partIndex: decoy.partIndex,
+            isTarget: false,
+            textKey: `decoy:${decoy.lineIndex}:${decoy.partIndex}:${decoy.text}`,
+          },
+          isTarget: false,
+        });
+      }
+    } else {
+      const targetMeta = {
+        lineIndex: lineEntry.lineIndex,
+        partIndex: 0,
+        isTarget: true,
+        textKey: `target:${lineEntry.lineIndex}:0`,
+      };
+      placements.push({
+        text: parts[0],
+        meta: targetMeta,
+        isTarget: true,
+      });
+      for (const decoy of pickDecoyTexts(parts[0], initialCloudDecoyCount())) {
       placements.push({
         text: decoy.text,
         meta: {
@@ -2066,6 +2116,7 @@
         },
         isTarget: false,
       });
+      }
     }
     const uniquePlacements = dedupePlacementsByText(placements);
 
@@ -2759,6 +2810,7 @@
 
   function revealAssembledLine(fullLine) {
     gameAssembledLines.push(fullLine);
+    currentLineAssemblyParts.length = 0;
     renderAssembly();
     const slot = assemblyEl.lastElementChild;
     if (slot) {
@@ -2767,25 +2819,55 @@
     }
   }
 
+  function relayoutCloudPlayfieldOnly() {
+    partsRoot.innerHTML = "";
+    cloudParts = [];
+    const frameW = stage.clientWidth;
+    const frameH = stage.clientHeight;
+    layoutCloudPlayfield(frameW, frameH);
+  }
+
+  function isCorrectPick(hit) {
+    if (hit.text !== expectedPartText()) return false;
+    if (!lineUsesMultiPartPlay()) return true;
+    return (
+      hit.lineIndex === gameExpectedLineIndex &&
+      hit.partIndex === gameExpectedPartIndex
+    );
+  }
+
   function resolvePick(hit) {
     if (!hit || pickLocked) return;
     pickLocked = true;
     loopSegmentStartIndex = pathPoints.length;
 
-    const correct = hit.text === expectedPartText();
+    const correct = isCorrectPick(hit);
+    const lineEntry = activeLineEntry();
+    const lineParts = partsForEntry(lineEntry);
+    const lineCompleteOnThisPick =
+      correct &&
+      (!lineUsesMultiPartPlay() ||
+        gameExpectedPartIndex >= lineParts.length - 1);
 
     const afterPickFade = (wasCorrect) => {
       if (!wasCorrect) finishPickRemoval(hit);
       if (wasCorrect) {
-        gameExpectedLineIndex += 1;
-        ensureExpectedOnCloud();
-        const spawn = pickLookaheadTailReplacement(null);
-        if (spawn && canSpawnCloudReplacement()) {
-          const pos = randomPositionForNewBlock(
-            spawn.text,
-            `repl-correct:${gameExpectedLineIndex}:${cloudParts.length}`
-          );
-          if (pos) fadeInCloudReplacement(pos.left, pos.top, spawn);
+        if (lineUsesMultiPartPlay() && !lineCompleteOnThisPick) {
+          gameExpectedPartIndex += 1;
+          ensureExpectedOnCloud();
+        } else {
+          gameExpectedLineIndex += 1;
+          gameExpectedPartIndex = 0;
+          if (lineUsesMultiPartPlay()) relayoutCloudPlayfieldOnly();
+          else ensureExpectedOnCloud();
+          const spawn = pickLookaheadTailReplacement(null);
+          if (spawn && canSpawnCloudReplacement()) {
+            const pos = randomPositionForNewBlock(
+              spawn.text,
+              `repl-correct:${gameExpectedLineIndex}:${cloudParts.length}`
+            );
+            if (pos) fadeInCloudReplacement(pos.left, pos.top, spawn);
+          }
         }
       } else {
         const decoy = pickDecoyReplacementText(null);
@@ -2808,10 +2890,24 @@
       const bonus = Math.floor(countdownRemaining * 10);
       sessionScore += 100 + bonus;
       countdownRemaining = 10.0;
-      const assembledFull = activeLineEntry().full;
+      const assembledFull = lineEntry.full;
       updateHud();
       flyCorrectPickToAssembly(hit.anchor, () => {
-        revealAssembledLine(assembledFull);
+        if (lineUsesMultiPartPlay()) {
+          currentLineAssemblyParts.push(hit.text);
+          if (lineCompleteOnThisPick) {
+            revealAssembledLine(assembledFull);
+          } else {
+            renderAssembly();
+            const slot = assemblyEl.lastElementChild;
+            if (slot) {
+              slot.classList.remove("is-empty");
+              slot.classList.add("is-reveal-pop");
+            }
+          }
+        } else {
+          revealAssembledLine(assembledFull);
+        }
         updateHud();
         afterPickFade(true);
       });
