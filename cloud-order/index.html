@@ -224,6 +224,11 @@
     pointer-events: none;
     transition: opacity 0.48s ease, transform 0.48s ease;
   }
+  body.is-play-game .lyric-part-anchor:not(.is-fly-overlay) {
+    pointer-events: auto;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
   .lyric-part-anchor.is-fly-overlay.is-flying-to-assembly {
     opacity: 1;
     transform: translate3d(var(--fly-dx, 0px), var(--fly-dy, 0px), 0) scale(0.94);
@@ -232,6 +237,9 @@
   }
   .lyric-part-anchor.is-fly-overlay.is-flying-to-assembly.is-fly-run {
     opacity: 0;
+  }
+  .lyric-part-anchor.is-tap-marked .lyric-block {
+    box-shadow: inset 0 0 0 9999px rgba(220, 72, 68, 0.14);
   }
   .lyric-part-anchor.is-picked-wrong {
     opacity: 0;
@@ -1836,9 +1844,20 @@
     }
   }
 
+  /** Next lyric line in song order — keep on field if already shown (ambient tick must not yank it). */
+  function nextUpcomingLineIndex() {
+    return gameExpectedLineIndex + 1;
+  }
+
+  function isProtectedFromAmbientRemoval(part) {
+    return part.lineIndex === nextUpcomingLineIndex();
+  }
+
   function ambientDecoyCandidates() {
     const expected = expectedPartText();
-    return cloudParts.filter((p) => p.text !== expected);
+    return cloudParts.filter(
+      (p) => p.text !== expected && !isProtectedFromAmbientRemoval(p)
+    );
   }
 
   function scheduleNextAmbientDecoyTick() {
@@ -1935,6 +1954,7 @@
   }
 
   function finishPickRemoval(part) {
+    clearPartTapMark(part);
     part.anchor.remove();
     cloudParts = cloudParts.filter((p) => p.anchor !== part.anchor);
   }
@@ -2284,6 +2304,27 @@
   let loopSegmentStartIndex = 0;
   let isDrawing = false;
   let pickLocked = false;
+  let autoCircleActive = false;
+  let autoCircleFrame = 0;
+  /** Parts tapped while an auto-circle is still running (FIFO). */
+  let autoCircleQueue = [];
+  /** @type {typeof cloudParts[0] | null} */
+  let autoCircleTargetPart = null;
+
+  function markPartTapped(part) {
+    part?.anchor?.classList.add("is-tap-marked");
+  }
+
+  function clearPartTapMark(part) {
+    part?.anchor?.classList.remove("is-tap-marked");
+  }
+
+  function clearPendingAutoCircleTapMarks() {
+    if (autoCircleTargetPart) clearPartTapMark(autoCircleTargetPart);
+    for (const p of autoCircleQueue) clearPartTapMark(p);
+  }
+  let partTapPending = null;
+  const PART_TAP_MOVE_PX = 14;
   let ambientDecoyTimerId = null;
   let ambientDecoyCycleBusy = false;
 
@@ -2418,6 +2459,217 @@
     rose.style.top = `${y}px`;
   }
 
+  function roseStageCenter() {
+    const x = parseFloat(rose.style.left);
+    const y = parseFloat(rose.style.top);
+    if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
+    const w = stage.clientWidth;
+    const h = stage.clientHeight;
+    return { x: w * 0.5, y: h * 0.72 };
+  }
+
+  function cloudPartForAnchor(anchor) {
+    if (!anchor) return null;
+    return cloudParts.find((p) => p.anchor === anchor) || null;
+  }
+
+  function pathCumulativeLengths(path) {
+    const lengths = [0];
+    for (let i = 1; i < path.length; i++) {
+      lengths.push(
+        lengths[i - 1] + Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y)
+      );
+    }
+    return lengths;
+  }
+
+  /** t in [0,1] along polyline by arc length. */
+  function pointAlongPath(path, lengths, t) {
+    if (!path.length) return { x: 0, y: 0 };
+    if (t <= 0) return path[0];
+    const total = lengths[lengths.length - 1];
+    if (t >= 1 || total <= 0) return path[path.length - 1];
+    const target = t * total;
+    let i = 1;
+    while (i < lengths.length && lengths[i] < target) i += 1;
+    const a = path[i - 1];
+    const b = path[i];
+    const segStart = lengths[i - 1];
+    const segLen = lengths[i] - segStart || 1;
+    const u = (target - segStart) / segLen;
+    return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+  }
+
+  function easeInOutSine(t) {
+    return -(Math.cos(Math.PI * t) - 1) / 2;
+  }
+
+  /** Chaikin-style smoothing on a closed or open index range (keeps endpoints). */
+  function smoothPolylineRange(points, fromIdx, toIdx, passes = 2, mix = 0.42) {
+    if (toIdx - fromIdx < 3) return;
+    for (let pass = 0; pass < passes; pass++) {
+      const slice = points.slice(fromIdx, toIdx + 1);
+      const n = slice.length;
+      for (let i = 1; i < n - 1; i++) {
+        const mid = {
+          x: (slice[i - 1].x + slice[i + 1].x) * 0.5,
+          y: (slice[i - 1].y + slice[i + 1].y) * 0.5,
+        };
+        slice[i] = {
+          x: slice[i].x + (mid.x - slice[i].x) * mix,
+          y: slice[i].y + (mid.y - slice[i].y) * mix,
+        };
+      }
+      for (let i = 0; i < n; i++) {
+        points[fromIdx + i] = clampToStage(slice[i].x, slice[i].y);
+      }
+    }
+  }
+
+  /** Hand-drawn approach + elliptical loop around a lyric box (stage coords). */
+  function buildAutoCirclePath(part, from) {
+    const cx = part.left + part.blockW * 0.5;
+    const cy = part.top + part.blockH * 0.5;
+    const rx = part.blockW * 0.58 + 12;
+    const ry = part.blockH * 0.58 + 12;
+    const entryAngle = Math.atan2(from.y - cy, from.x - cx);
+    const phase = hashSeed(`${part.text}:${gameExpectedLineIndex}`) * 0.0021;
+    const entry = {
+      x: cx + rx * Math.cos(entryAngle),
+      y: cy + ry * Math.sin(entryAngle),
+    };
+    const out = [];
+    const approachLen = Math.hypot(entry.x - from.x, entry.y - from.y);
+    const approachSteps = Math.max(24, Math.min(80, Math.floor(approachLen / 1.8)));
+    const perpX = -(entry.y - from.y) / (approachLen || 1);
+    const perpY = (entry.x - from.x) / (approachLen || 1);
+    for (let i = 0; i <= approachSteps; i++) {
+      const t = i / approachSteps;
+      const ease = t * t * (3 - 2 * t);
+      const bow = Math.sin(t * Math.PI) * 2.4;
+      const p = clampToStage(
+        from.x + (entry.x - from.x) * ease + perpX * bow,
+        from.y + (entry.y - from.y) * ease + perpY * bow * 0.55
+      );
+      out.push(p);
+    }
+    const loopStartIdx = out.length - 1;
+    const turns = 1;
+    const loopSteps = Math.max(
+      120,
+      Math.min(220, Math.floor(((rx + ry) * 0.5 * turns * Math.PI * 2) / 1.85))
+    );
+    for (let i = 0; i <= loopSteps; i++) {
+      const u = i / loopSteps;
+      const ang = entryAngle + u * turns * Math.PI * 2;
+      const rPulse =
+        1 +
+        0.035 * Math.sin(ang * 2 + phase) +
+        0.02 * Math.sin(ang * 3.1 + phase * 1.7);
+      const driftX = Math.sin(ang * 2 + phase) * 1.1;
+      const driftY = Math.cos(ang * 2 + phase * 0.9) * 0.85;
+      const rxU = rx * rPulse;
+      const ryU = ry * (rPulse * 0.97 + 0.03 * Math.sin(ang + phase));
+      out.push(
+        clampToStage(
+          cx + driftX + rxU * Math.cos(ang),
+          cy + driftY + ryU * Math.sin(ang)
+        )
+      );
+    }
+    smoothPolylineRange(out, loopStartIdx, out.length - 1, 1, 0.28);
+    return out;
+  }
+
+  function cancelAutoCircleAnimation() {
+    if (autoCircleFrame) {
+      cancelAnimationFrame(autoCircleFrame);
+      autoCircleFrame = 0;
+    }
+    autoCircleActive = false;
+    clearPendingAutoCircleTapMarks();
+    autoCircleTargetPart = null;
+    autoCircleQueue = [];
+  }
+
+  function autoCirclePendingCount() {
+    return autoCircleQueue.length + (autoCircleActive ? 1 : 0);
+  }
+
+  function autoCircleSpeedFactor(pendingCount) {
+    const n = Math.max(1, pendingCount);
+    return Math.min(3.2, 1 + (n - 1) * 0.52);
+  }
+
+  function drainAutoCircleQueue() {
+    if (pickLocked || isDrawing || autoCircleActive || !autoCircleQueue.length) return;
+    const next = autoCircleQueue.shift();
+    if (next?.anchor?.isConnected) runAutoCircleOnPart(next);
+    else if (autoCircleQueue.length) drainAutoCircleQueue();
+  }
+
+  function requestAutoCircleOnPart(part) {
+    if (!part || pickLocked || isDrawing) return;
+    markPartTapped(part);
+    if (autoCircleActive) {
+      autoCircleQueue.push(part);
+      return;
+    }
+    runAutoCircleOnPart(part);
+  }
+
+  function runAutoCircleOnPart(part) {
+    if (!part || pickLocked || isDrawing) return;
+    if (autoCircleFrame) {
+      cancelAnimationFrame(autoCircleFrame);
+      autoCircleFrame = 0;
+    }
+    autoCircleActive = true;
+    autoCircleTargetPart = part;
+    stage.classList.add("is-drawing");
+    const from = roseStageCenter();
+    const path = buildAutoCirclePath(part, from);
+    const pathLengths = pathCumulativeLengths(path);
+    const pathPixels = pathLengths[pathLengths.length - 1] || 1;
+    const durationMs = Math.min(1320, 520 + pathPixels * 3.1);
+    let prevArcT = 0;
+    let arcProgress = 0;
+    let lastTickAt = performance.now();
+
+    const tick = (now) => {
+      if (!autoCircleActive || pickLocked) {
+        cancelAutoCircleAnimation();
+        stage.classList.remove("is-drawing");
+        return;
+      }
+      const dt = Math.max(0, now - lastTickAt);
+      lastTickAt = now;
+      const speed = autoCircleSpeedFactor(autoCirclePendingCount());
+      arcProgress = Math.min(1, arcProgress + (dt / durationMs) * speed);
+      const eased = easeInOutSine(arcProgress);
+      const arcSpan = (eased - prevArcT) * pathPixels;
+      const subSteps = Math.max(1, Math.ceil(arcSpan / 1.75));
+      for (let k = 1; k <= subSteps; k++) {
+        const t = prevArcT + ((eased - prevArcT) * k) / subSteps;
+        const pt = pointAlongPath(path, pathLengths, t);
+        appendPathPoint(pt.x, pt.y, { detectPick: false });
+      }
+      prevArcT = eased;
+      const p = pointAlongPath(path, pathLengths, eased);
+      moveRose(p.x, p.y);
+      if (arcProgress >= 1) {
+        autoCircleFrame = 0;
+        autoCircleActive = false;
+        autoCircleTargetPart = null;
+        stage.classList.remove("is-drawing");
+        resolvePick(part);
+        return;
+      }
+      autoCircleFrame = requestAnimationFrame(tick);
+    };
+    autoCircleFrame = requestAnimationFrame(tick);
+  }
+
   const PICK_FADE_MS = 480;
   const DECOY_AMBIENT_MIN_MS = 5000;
   const DECOY_AMBIENT_MAX_MS = 8000;
@@ -2460,7 +2712,7 @@
 
   function flyCorrectPickToAssembly(anchor, onComplete) {
     cloudParts = cloudParts.filter((p) => p.anchor !== anchor);
-    anchor.classList.remove("is-spawn-in", "is-spawn-visible", "is-picked-wrong");
+    anchor.classList.remove("is-spawn-in", "is-spawn-visible", "is-picked-wrong", "is-tap-marked");
     const start = anchor.getBoundingClientRect();
     const targetLine = assemblyEl.lastElementChild;
     const target = targetLine
@@ -2549,6 +2801,7 @@
       ensureAmbientDecoyRotation();
       drawTrail();
       scheduleTrailFade();
+      drainAutoCircleQueue();
     };
 
     if (correct) {
@@ -2570,21 +2823,62 @@
     }
   }
 
-  function appendPathPoint(x, y) {
+  function appendPathPoint(x, y, opts = {}) {
+    const detectPick = opts.detectPick !== false;
+    const minDist = opts.minDist ?? (autoCircleActive ? 0.65 : 2.5);
     const last = pathPoints[pathPoints.length - 1];
-    if (last && Math.hypot(x - last.x, y - last.y) < 2.5) return;
+    if (last && Math.hypot(x - last.x, y - last.y) < minDist) return;
     pathPoints.push({ x, y, t: performance.now() });
     drawTrail();
     scheduleTrailFade();
+    if (!detectPick || autoCircleActive) return;
     const pickPt = detectLoopPickPoint(pathPoints, loopSegmentStartIndex);
     if (!pickPt) return;
     const hit = hitTestCloud(pickPt.x, pickPt.y);
     if (hit) resolvePick(hit);
   }
 
-  function onPointerDown(e) {
+  function onPartPointerDown(e) {
     if (!PLAY_GAME || ALL_LEVELS_PREVIEW || pickLocked) return;
     if (e.button !== 0 && e.pointerType === "mouse") return;
+    const anchor = e.target.closest?.(".lyric-part-anchor");
+    if (!anchor || anchor.classList.contains("is-fly-overlay")) return;
+    const part = cloudPartForAnchor(anchor);
+    if (!part) return;
+    e.stopPropagation();
+    partTapPending = {
+      pointerId: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      part,
+      anchor,
+    };
+    anchor.setPointerCapture?.(e.pointerId);
+  }
+
+  function finishPartTap(e) {
+    if (!partTapPending || partTapPending.pointerId !== e.pointerId) return;
+    const { x, y, part, anchor } = partTapPending;
+    partTapPending = null;
+    if (anchor.hasPointerCapture?.(e.pointerId)) anchor.releasePointerCapture(e.pointerId);
+    if (pickLocked || isDrawing) return;
+    if (Math.hypot(e.clientX - x, e.clientY - y) > PART_TAP_MOVE_PX) return;
+    requestAutoCircleOnPart(part);
+  }
+
+  function onPartPointerUp(e) {
+    finishPartTap(e);
+  }
+
+  function onPartPointerCancel(e) {
+    if (partTapPending?.pointerId === e.pointerId) partTapPending = null;
+  }
+
+  function onPointerDown(e) {
+    if (!PLAY_GAME || ALL_LEVELS_PREVIEW || pickLocked || autoCircleActive) return;
+    if (e.target.closest?.(".lyric-part-anchor")) return;
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    cancelAutoCircleAnimation();
     stage.setPointerCapture(e.pointerId);
     isDrawing = true;
     clearTrail();
@@ -2610,10 +2904,13 @@
     isDrawing = false;
     stage.classList.remove("is-drawing");
     if (stage.hasPointerCapture?.(e.pointerId)) stage.releasePointerCapture(e.pointerId);
-    if (!pickLocked) clearTrail();
+    if (!pickLocked && !autoCircleActive) clearTrail();
   }
 
   if (PLAY_GAME) {
+    partsRoot.addEventListener("pointerdown", onPartPointerDown);
+    partsRoot.addEventListener("pointerup", onPartPointerUp);
+    partsRoot.addEventListener("pointercancel", onPartPointerCancel);
     stage.addEventListener("pointerdown", onPointerDown);
     stage.addEventListener("pointermove", onPointerMove);
     stage.addEventListener("pointerup", onPointerEnd);
@@ -2631,6 +2928,8 @@
     partsRoot.innerHTML = "";
     pickLocked = false;
     isDrawing = false;
+    cancelAutoCircleAnimation();
+    partTapPending = null;
     clearTrail();
     document.body.classList.toggle("is-all-levels-preview", ALL_LEVELS_PREVIEW);
     document.body.classList.toggle("is-play-game", PLAY_GAME && !ALL_LEVELS_PREVIEW);
