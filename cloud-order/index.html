@@ -1046,7 +1046,7 @@
   }
   const CLOUD_DECOY_COUNT = 5;
   /** Simultaneous boxes on the playfield (target + decoys); level 1 stays sparse. */
-  const CLOUD_MAX_BOXES_BY_LEVEL = { 1: 4 };
+  const CLOUD_MAX_BOXES_BY_LEVEL = { 1: 4, 3: 11 };
   function cloudMaxBoxes() {
     return CLOUD_MAX_BOXES_BY_LEVEL[ACTIVE_GAME_LEVEL] ?? 1 + CLOUD_DECOY_COUNT;
   }
@@ -1056,6 +1056,29 @@
   function canSpawnCloudReplacement() {
     return cloudParts.length < cloudMaxBoxes();
   }
+
+  /** Fade in one lookahead decoy when under the level cap (shared by picks and ambient timer). */
+  function spawnCloudReplacementDecoy(seedPrefix, excludeAnchor = null) {
+    if (!canSpawnCloudReplacement()) return false;
+    const decoy = pickLookaheadTailReplacement(excludeAnchor);
+    if (!decoy) return false;
+    const pos = randomPositionForNewBlock(
+      decoy.text,
+      `${seedPrefix}:${gameExpectedLineIndex}:${cloudParts.length}:${performance.now()}`
+    );
+    if (!pos) return false;
+    fadeInCloudReplacement(pos.left, pos.top, decoy);
+    return true;
+  }
+
+  /** Refill decoy slots after removals (rapid taps can skip spawns if a box was already gone). */
+  function topUpCloudToMaxBoxes() {
+    if (!PLAY_GAME || ALL_LEVELS_PREVIEW) return;
+    let guard = 0;
+    while (canSpawnCloudReplacement() && guard++ < cloudMaxBoxes()) {
+      if (!spawnCloudReplacementDecoy("topup")) break;
+    }
+  }
   /** Max square side for a single cloud box vs playfield short edge. */
   const CLOUD_MAX_BLOCK_SIDE_FRACTION = 0.42;
   /** Letter scale inside cloud boxes (design preview uses `LYRIC_PART_SCALE`). */
@@ -1063,13 +1086,14 @@
   const CLOUD_LAYOUT_GAP = 12;
   const CLOUD_LAYOUT_PAD = 10;
   const CLOUD_PLACE_ATTEMPTS = 140;
+  function entryAtPlayIndex(playIndex) {
+    const sorted = sortedPlayableEntries();
+    if (!sorted.length) return LINE_BOX_HIERARCHY[0];
+    const i = Math.max(0, Math.min(playIndex, sorted.length - 1));
+    return sorted[i];
+  }
   function activeLineEntry() {
-    if (PLAY_GAME) {
-      return (
-        LINE_BOX_HIERARCHY.find((e) => e.lineIndex === gameExpectedLineIndex) ||
-        LINE_BOX_HIERARCHY[0]
-      );
-    }
+    if (PLAY_GAME) return entryAtPlayIndex(gameExpectedLineIndex);
     return LINE_BOX_HIERARCHY[38];
   }
   function partsForEntry(entry) {
@@ -1676,9 +1700,8 @@
 
   /** Lyric lines after the current expected index (song order). */
   function upcomingEntries() {
-    return sortedPlayableEntries().filter(
-      (e) => e.lineIndex > gameExpectedLineIndex
-    );
+    const sorted = sortedPlayableEntries();
+    return sorted.slice(gameExpectedLineIndex + 1);
   }
 
   function shuffleInPlace(arr) {
@@ -1690,11 +1713,13 @@
   }
 
   function pickFarDecoyEntries(correctText, usedTexts, count) {
+    const sorted = sortedPlayableEntries();
     const pool = [];
-    for (const entry of sortedPlayableEntries()) {
+    for (let i = 0; i < gameExpectedLineIndex; i++) {
+      const entry = sorted[i];
+      if (!entry) continue;
       const text = partTextForEntry(entry);
       if (!text || text === correctText || usedTexts.has(text)) continue;
-      if (entry.lineIndex > gameExpectedLineIndex) continue;
       pool.push(entry);
     }
     shuffleInPlace(pool);
@@ -1703,7 +1728,7 @@
 
   /** Furthest lyric line index kept in the sliding cloud window (four boxes → expected + 3 ahead). */
   function cloudLookaheadTailLineIndex() {
-    return gameExpectedLineIndex + (cloudMaxBoxes() - 1);
+    return entryAtPlayIndex(gameExpectedLineIndex + cloudMaxBoxes() - 1).lineIndex;
   }
 
   /** Initial decoys: the next `count` lyric lines in song order (lookahead window). */
@@ -1711,8 +1736,7 @@
     const used = new Set([correctText]);
     const out = [];
     for (let d = 1; d <= count; d++) {
-      const idx = gameExpectedLineIndex + d;
-      const entry = sortedPlayableEntries().find((e) => e.lineIndex === idx);
+      const entry = entryAtPlayIndex(gameExpectedLineIndex + d);
       if (!entry) continue;
       const text = partTextForEntry(entry);
       if (!text || used.has(text)) continue;
@@ -1842,11 +1866,49 @@
     const seen = new Set();
     const out = [];
     for (const p of placements) {
-      if (seen.has(p.text)) continue;
-      seen.add(p.text);
+      const key = p.meta?.textKey ?? p.text;
+      if (seen.has(key)) continue;
+      seen.add(key);
       out.push(p);
     }
     return out;
+  }
+
+  function currentLinePartKeysOnCloud() {
+    const entry = activeLineEntry();
+    const keys = new Set();
+    for (const p of cloudParts) {
+      if (p.lineIndex === entry.lineIndex) keys.add(p.partIndex);
+    }
+    return keys;
+  }
+
+  /** Re-place missing phrase boxes still needed for the active line (levels > 1). */
+  function ensureCurrentLinePartsOnCloud() {
+    if (!lineUsesMultiPartPlay()) return;
+    const entry = activeLineEntry();
+    const parts = partsForEntry(entry);
+    if (parts.length <= 1) return;
+    const onCloud = currentLinePartKeysOnCloud();
+    for (let pi = 0; pi < parts.length; pi++) {
+      if (pi < gameExpectedPartIndex) continue;
+      const text = parts[pi];
+      if (!text || onCloud.has(pi)) continue;
+      if (!canSpawnCloudReplacement()) break;
+      const pos = randomPositionForNewBlock(
+        text,
+        `repl-line-part:${entry.lineIndex}:${pi}:${cloudParts.length}`
+      );
+      if (!pos) break;
+      fadeInCloudReplacement(pos.left, pos.top, {
+        text,
+        lineIndex: entry.lineIndex,
+        partIndex: pi,
+        isTarget: pi === gameExpectedPartIndex,
+        textKey: `line:${entry.lineIndex}:${pi}`,
+      });
+      onCloud.add(pi);
+    }
   }
 
   function randomAmbientDelayMs() {
@@ -1865,15 +1927,17 @@
 
   /** Next lyric line in song order — keep on field if already shown (ambient tick must not yank it). */
   function nextUpcomingLineIndex() {
-    return gameExpectedLineIndex + 1;
+    return entryAtPlayIndex(gameExpectedLineIndex + 1).lineIndex;
   }
 
   function isProtectedFromAmbientRemoval(part) {
+    const currentLine = activeLineEntry().lineIndex;
+    const nextLine = nextUpcomingLineIndex();
     if (lineUsesMultiPartPlay()) {
-      if (part.lineIndex === gameExpectedLineIndex) return true;
-      return part.lineIndex === nextUpcomingLineIndex();
+      if (part.lineIndex === currentLine) return true;
+      return part.lineIndex === nextLine;
     }
-    return part.lineIndex === nextUpcomingLineIndex();
+    return part.lineIndex === nextLine;
   }
 
   function ambientDecoyCandidates() {
@@ -1916,17 +1980,9 @@
     const part = candidates[Math.floor(Math.random() * candidates.length)];
     part.anchor.classList.add("is-picked-wrong");
     window.setTimeout(() => {
-      if (cloudParts.includes(part)) {
-        finishPickRemoval(part);
-        const decoy = pickDecoyReplacementText(null);
-        if (decoy && canSpawnCloudReplacement()) {
-          const pos = randomPositionForNewBlock(
-            decoy.text,
-            `ambient:${gameExpectedLineIndex}:${cloudParts.length}:${performance.now()}`
-          );
-          if (pos) fadeInCloudReplacement(pos.left, pos.top, decoy);
-        }
-      }
+      if (cloudParts.includes(part)) finishPickRemoval(part);
+      spawnCloudReplacementDecoy("ambient");
+      topUpCloudToMaxBoxes();
       ambientDecoyCycleBusy = false;
       scheduleNextAmbientDecoyTick();
     }, PICK_FADE_MS);
@@ -2632,15 +2688,23 @@
     return out;
   }
 
-  function cancelAutoCircleAnimation() {
+  function stopCurrentAutoCircle(clearQueue = false) {
     if (autoCircleFrame) {
       cancelAnimationFrame(autoCircleFrame);
       autoCircleFrame = 0;
     }
     autoCircleActive = false;
-    clearPendingAutoCircleTapMarks();
+    if (autoCircleTargetPart) clearPartTapMark(autoCircleTargetPart);
     autoCircleTargetPart = null;
-    autoCircleQueue = [];
+    stage.classList.remove("is-drawing");
+    if (clearQueue) {
+      for (const p of autoCircleQueue) clearPartTapMark(p);
+      autoCircleQueue = [];
+    }
+  }
+
+  function cancelAutoCircleAnimation() {
+    stopCurrentAutoCircle(true);
   }
 
   function autoCirclePendingCount() {
@@ -2652,20 +2716,44 @@
     return Math.min(3.2, 1 + (n - 1) * 0.52);
   }
 
+  function isPartQueuedOrActive(part) {
+    if (!part?.anchor) return false;
+    if (autoCircleTargetPart?.anchor === part.anchor) return true;
+    return autoCircleQueue.some((p) => p.anchor === part.anchor);
+  }
+
+  function enqueueAutoCirclePart(part) {
+    if (!part?.anchor?.isConnected) return false;
+    if (!cloudParts.some((p) => p.anchor === part.anchor)) return false;
+    if (isPartQueuedOrActive(part)) return false;
+    markPartTapped(part);
+    autoCircleQueue.push(part);
+    return true;
+  }
+
   function drainAutoCircleQueue() {
-    if (pickLocked || isDrawing || autoCircleActive || !autoCircleQueue.length) return;
-    const next = autoCircleQueue.shift();
-    if (next?.anchor?.isConnected) runAutoCircleOnPart(next);
-    else if (autoCircleQueue.length) drainAutoCircleQueue();
+    while (autoCircleQueue.length) {
+      if (pickLocked || isDrawing || autoCircleActive) return;
+      const next = autoCircleQueue.shift();
+      if (
+        !next?.anchor?.isConnected ||
+        !cloudParts.some((p) => p.anchor === next.anchor)
+      ) {
+        clearPartTapMark(next);
+        continue;
+      }
+      runAutoCircleOnPart(next);
+      return;
+    }
   }
 
   function requestAutoCircleOnPart(part) {
-    if (!part || pickLocked || isDrawing) return;
-    markPartTapped(part);
-    if (autoCircleActive) {
-      autoCircleQueue.push(part);
+    if (!part?.anchor?.isConnected) return;
+    if (pickLocked || isDrawing || autoCircleActive) {
+      enqueueAutoCirclePart(part);
       return;
     }
+    markPartTapped(part);
     runAutoCircleOnPart(part);
   }
 
@@ -2689,8 +2777,7 @@
 
     const tick = (now) => {
       if (!autoCircleActive || pickLocked) {
-        cancelAutoCircleAnimation();
-        stage.classList.remove("is-drawing");
+        stopCurrentAutoCircle(false);
         return;
       }
       const dt = Math.max(0, now - lastTickAt);
@@ -2819,25 +2906,34 @@
     }
   }
 
-  function relayoutCloudPlayfieldOnly() {
-    partsRoot.innerHTML = "";
-    cloudParts = [];
-    const frameW = stage.clientWidth;
-    const frameH = stage.clientHeight;
-    layoutCloudPlayfield(frameW, frameH);
+  /** Drop any leftover boxes for a line that just finished (correct picks already flew off). */
+  function removeCloudPartsForSongLine(songLineIndex) {
+    for (const p of cloudParts.filter((cp) => cp.lineIndex === songLineIndex)) {
+      finishPickRemoval(p);
+    }
+  }
+
+  /** After the last phrase of a line: advance play state without re-randomizing the cloud. */
+  function continueCloudAfterLineComplete(completedSongLineIndex) {
+    cancelAutoCircleAnimation();
+    removeCloudPartsForSongLine(completedSongLineIndex);
+    ensureExpectedOnCloud();
+    ensureCurrentLinePartsOnCloud();
   }
 
   function isCorrectPick(hit) {
+    const entry = activeLineEntry();
     if (hit.text !== expectedPartText()) return false;
-    if (!lineUsesMultiPartPlay()) return true;
+    if (!lineUsesMultiPartPlay()) return hit.lineIndex === entry.lineIndex;
     return (
-      hit.lineIndex === gameExpectedLineIndex &&
+      hit.lineIndex === entry.lineIndex &&
       hit.partIndex === gameExpectedPartIndex
     );
   }
 
   function resolvePick(hit) {
     if (!hit || pickLocked) return;
+    if (!cloudParts.some((p) => p.anchor === hit.anchor)) return;
     pickLocked = true;
     loopSegmentStartIndex = pathPoints.length;
 
@@ -2847,7 +2943,8 @@
     const lineCompleteOnThisPick =
       correct &&
       (!lineUsesMultiPartPlay() ||
-        gameExpectedPartIndex >= lineParts.length - 1);
+        (lineParts.length > 0 &&
+          gameExpectedPartIndex === lineParts.length - 1));
 
     const afterPickFade = (wasCorrect) => {
       if (!wasCorrect) finishPickRemoval(hit);
@@ -2855,30 +2952,23 @@
         if (lineUsesMultiPartPlay() && !lineCompleteOnThisPick) {
           gameExpectedPartIndex += 1;
           ensureExpectedOnCloud();
+          ensureCurrentLinePartsOnCloud();
         } else {
+          const completedSongLineIndex = lineEntry.lineIndex;
           gameExpectedLineIndex += 1;
           gameExpectedPartIndex = 0;
-          if (lineUsesMultiPartPlay()) relayoutCloudPlayfieldOnly();
-          else ensureExpectedOnCloud();
-          const spawn = pickLookaheadTailReplacement(null);
-          if (spawn && canSpawnCloudReplacement()) {
-            const pos = randomPositionForNewBlock(
-              spawn.text,
-              `repl-correct:${gameExpectedLineIndex}:${cloudParts.length}`
-            );
-            if (pos) fadeInCloudReplacement(pos.left, pos.top, spawn);
+          if (lineUsesMultiPartPlay()) {
+            continueCloudAfterLineComplete(completedSongLineIndex);
+          } else {
+            ensureExpectedOnCloud();
+            spawnCloudReplacementDecoy("repl-correct");
           }
         }
       } else {
-        const decoy = pickDecoyReplacementText(null);
-        if (decoy && canSpawnCloudReplacement()) {
-          const pos = randomPositionForNewBlock(
-            decoy.text,
-            `repl-wrong:${gameExpectedLineIndex}:${cloudParts.length}`
-          );
-          if (pos) fadeInCloudReplacement(pos.left, pos.top, decoy);
-        }
+        spawnCloudReplacementDecoy("repl-wrong", hit.anchor);
+        if (lineUsesMultiPartPlay()) ensureCurrentLinePartsOnCloud();
       }
+      topUpCloudToMaxBoxes();
       pickLocked = false;
       ensureAmbientDecoyRotation();
       drawTrail();
@@ -2935,7 +3025,7 @@
   }
 
   function onPartPointerDown(e) {
-    if (!PLAY_GAME || ALL_LEVELS_PREVIEW || pickLocked) return;
+    if (!PLAY_GAME || ALL_LEVELS_PREVIEW) return;
     if (e.button !== 0 && e.pointerType === "mouse") return;
     const anchor = e.target.closest?.(".lyric-part-anchor");
     if (!anchor || anchor.classList.contains("is-fly-overlay")) return;
@@ -2957,7 +3047,6 @@
     const { x, y, part, anchor } = partTapPending;
     partTapPending = null;
     if (anchor.hasPointerCapture?.(e.pointerId)) anchor.releasePointerCapture(e.pointerId);
-    if (pickLocked || isDrawing) return;
     if (Math.hypot(e.clientX - x, e.clientY - y) > PART_TAP_MOVE_PX) return;
     requestAutoCircleOnPart(part);
   }
@@ -3001,6 +3090,7 @@
     stage.classList.remove("is-drawing");
     if (stage.hasPointerCapture?.(e.pointerId)) stage.releasePointerCapture(e.pointerId);
     if (!pickLocked && !autoCircleActive) clearTrail();
+    drainAutoCircleQueue();
   }
 
   if (PLAY_GAME) {
