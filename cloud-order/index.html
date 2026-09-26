@@ -224,12 +224,13 @@
     pointer-events: none;
     transition: opacity 0.48s ease, transform 0.48s ease;
   }
-  .lyric-part-anchor.is-flying-to-assembly {
+  .lyric-part-anchor.is-fly-overlay.is-flying-to-assembly {
     opacity: 1;
-    transform: translate(var(--fly-dx, 0px), var(--fly-dy, 0px)) scale(0.94);
+    transform: translate3d(var(--fly-dx, 0px), var(--fly-dy, 0px), 0) scale(0.94);
     transition: transform 0.52s cubic-bezier(0.22, 0.85, 0.32, 1), opacity 0.52s ease;
+    will-change: transform, opacity;
   }
-  .lyric-part-anchor.is-flying-to-assembly.is-fly-run {
+  .lyric-part-anchor.is-fly-overlay.is-flying-to-assembly.is-fly-run {
     opacity: 0;
   }
   .lyric-part-anchor.is-picked-wrong {
@@ -2459,6 +2460,7 @@
 
   function flyCorrectPickToAssembly(anchor, onComplete) {
     cloudParts = cloudParts.filter((p) => p.anchor !== anchor);
+    anchor.classList.remove("is-spawn-in", "is-spawn-visible", "is-picked-wrong");
     const start = anchor.getBoundingClientRect();
     const targetLine = assemblyEl.lastElementChild;
     const target = targetLine
@@ -2490,13 +2492,17 @@
     };
     anchor.addEventListener("transitionend", onTransitionEnd);
 
+    const flyDx = targetCx - startCx;
+    const flyDy = targetCy - startCy;
     anchor.style.setProperty("--fly-dx", "0px");
     anchor.style.setProperty("--fly-dy", "0px");
     void anchor.offsetWidth;
-    anchor.style.setProperty("--fly-dx", `${targetCx - startCx}px`);
-    anchor.style.setProperty("--fly-dy", `${targetCy - startCy}px`);
-    anchor.classList.add("is-fly-run");
-    window.setTimeout(finish, FLY_TO_ASSEMBLY_MS + 80);
+    requestAnimationFrame(() => {
+      anchor.style.setProperty("--fly-dx", `${flyDx}px`);
+      anchor.style.setProperty("--fly-dy", `${flyDy}px`);
+      anchor.classList.add("is-fly-run");
+      window.setTimeout(finish, FLY_TO_ASSEMBLY_MS + 80);
+    });
   }
 
   function revealAssembledLine(fullLine) {
